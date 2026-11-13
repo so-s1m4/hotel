@@ -224,7 +224,10 @@ sharing results: injected tests are distinct from configured-parser runs.
 `extraction.method="llm"` can also describe cached output, so use the explicit
 `live_llm`, `cache_llm`, `source_label`, `fallback` and error counts.
 
-Raw checks assess schema, intended label/time, exact evidence/time quotations and
+Raw `schema_valid` checks the existing decoder/frozen `GuestIntentV1` contract,
+which supplies defaults for omitted fields. It does not validate the stricter
+generation schema or prove the server enforced it; record that canary separately.
+Raw checks also assess intended label/time, exact evidence/time quotations and
 allowed grounded detail values. Raw model review flags are not compared with
 host review gold: the host can add review for source-label disagreement or safety
 normalization. Host checks additionally compare review and required uncertainty.

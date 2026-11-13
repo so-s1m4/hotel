@@ -381,6 +381,10 @@ def _explicit_date(text: str, language: str, message_time: datetime | None) -> t
 def _source_date_scope(original: str, start: int, end: int, language: str,
                        message_time: datetime | None) -> str | None:
     """Return source context for a complete quote occurrence, not a fragment."""
+    # A literal substring is insufficient if it cuts digits from a clock token.
+    if ((start and original[start].isdigit() and original[start - 1].isdigit())
+            or (end < len(original) and original[end - 1].isdigit() and original[end].isdigit())):
+        return None
     if start and original[start].isalpha() and (original[start - 1].isalnum() or original[start - 1] == "_"):
         return None
     # A word boundary is insufficient for "day after tomorrow"/"apres-demain".
@@ -478,6 +482,13 @@ def _surrounding_time_qualifiers(quoted: str, evidence: str, original: str, *, l
                 after, after_found = _explicit_date(scope[match.end():], language, message_time)
                 if before_found and after_found and (before is None or after is None or before != after):
                     bound = True
+        # Inspect the complete source clause, including when the model selected
+        # the second clock or dropped the repeated preposition after "or".
+        clock_token = r"\b\d{1,2}[:h]\d{2}\b"
+        clock_preposition = r"(?:(?:at|um|alle|a(?:\s+las)?|om)\s+)?"
+        if re.search(clock_token + r"\s+(?:or|oder|ou|o|of|oppure)\s+"
+                     + clock_preposition + clock_token, scope):
+            bound = True
         # Include source context outside the model's evidence quote as well:
         # evidence_quote="13:00" cannot hide "after" immediately before it.
         prefix = _fold(original[max(0, start - 90):start])
