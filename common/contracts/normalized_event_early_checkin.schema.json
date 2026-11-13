@@ -1,0 +1,236 @@
+{
+  "$defs": {
+    "EventEntitiesV1": {
+      "additionalProperties": false,
+      "properties": {
+        "room_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Room Id"
+        },
+        "booking_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Booking Id"
+        },
+        "guest_request_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Guest Request Id"
+        },
+        "asset_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Asset Id"
+        },
+        "resource_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resource Id"
+        }
+      },
+      "title": "EventEntitiesV1",
+      "type": "object"
+    },
+    "ExtractionMetaV1": {
+      "additionalProperties": false,
+      "properties": {
+        "method": {
+          "enum": [
+            "llm",
+            "source_label",
+            "fallback",
+            "none"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "model_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Name"
+        },
+        "needs_review": {
+          "default": false,
+          "title": "Needs Review",
+          "type": "boolean"
+        },
+        "uncertain_fields": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Uncertain Fields",
+          "type": "array"
+        }
+      },
+      "required": [
+        "method"
+      ],
+      "title": "ExtractionMetaV1",
+      "type": "object"
+    },
+    "SourceRefV1": {
+      "additionalProperties": false,
+      "description": "Stable pointer to an actual source row, never an LLM-generated identifier.",
+      "properties": {
+        "file": {
+          "minLength": 1,
+          "title": "File",
+          "type": "string"
+        },
+        "record_id": {
+          "minLength": 1,
+          "title": "Record Id",
+          "type": "string"
+        },
+        "timestamp_utc": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timestamp Utc"
+        }
+      },
+      "required": [
+        "file",
+        "record_id"
+      ],
+      "title": "SourceRefV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Team-internal event envelope; use it in ingestion->engine handoff.",
+  "properties": {
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "event_id": {
+      "minLength": 1,
+      "title": "Event Id",
+      "type": "string"
+    },
+    "timestamp_utc": {
+      "title": "Timestamp Utc",
+      "type": "string"
+    },
+    "available_at_utc": {
+      "title": "Available At Utc",
+      "type": "string"
+    },
+    "event_type": {
+      "enum": [
+        "guest_request",
+        "operational_event",
+        "bms_alarm",
+        "booking_created",
+        "roster_update",
+        "work_order_created",
+        "clock_tick",
+        "unknown"
+      ],
+      "title": "Event Type",
+      "type": "string"
+    },
+    "source": {
+      "$ref": "#/$defs/SourceRefV1"
+    },
+    "entities": {
+      "$ref": "#/$defs/EventEntitiesV1"
+    },
+    "priority_hint": {
+      "anyOf": [
+        {
+          "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Priority Hint"
+    },
+    "payload": {
+      "additionalProperties": true,
+      "title": "Payload",
+      "type": "object"
+    },
+    "extraction": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ExtractionMetaV1"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "event_id",
+    "timestamp_utc",
+    "available_at_utc",
+    "event_type",
+    "source",
+    "entities"
+  ],
+  "title": "NormalizedEventV1",
+  "type": "object"
+}

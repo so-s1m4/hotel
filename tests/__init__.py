@@ -1,0 +1,1 @@
+"""Hotel operations prototype scaffold."""

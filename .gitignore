@@ -1,0 +1,25 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+*.egg-info/
+build/
+dist/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+/data/*
+!/data/README.md
+/outputs/*
+!/outputs/.gitkeep
+.cache/
+/tmp/
+# Original bundles remain local, intact; canonical sources live in docs/ and common/.
+/A_LESHA_DATA_LLM/
+/decision_engine_full/
+/PLATO40_v2_*.zip
+/PLATO40_v2_*.7z
+/PLATO40_v2_*.pdf

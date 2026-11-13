@@ -1,0 +1,304 @@
+{
+  "metadata": {
+    "model_id": "PLATO-40",
+    "profile": "quickstart",
+    "start_utc": "2026-01-05T00:00:00Z",
+    "end_utc": "2026-01-26T00:00:00Z",
+    "rooms": 40,
+    "required_files": 17
+  },
+  "files": {
+    "CHALLENGE.md": {
+      "bytes": 18531,
+      "sha256": "c687a570e25e883ec472f81df3c0ca8bd505853827079f8827fe0bde037e6300"
+    },
+    "DECISION_CONTRACT.md": {
+      "bytes": 3216,
+      "sha256": "8a4b6f9fa696608ff169e06f1bfe82de299ac72878f353e7c7864b17c936e056"
+    },
+    "README.md": {
+      "bytes": 7637,
+      "sha256": "b7ddfff2d89caf4fdb9406b4a36ef0f63baabd12182f78642e5e5d871fbf4832"
+    },
+    "access_log.csv": {
+      "bytes": 181975,
+      "sha256": "699c541d806ed504b87208161d1df5b48d6578fdb38a7948b7fef4c803664e5a",
+      "columns": [
+        "timestamp_utc",
+        "door_id",
+        "credential",
+        "result"
+      ],
+      "rows": 3787,
+      "blank_cells": {}
+    },
+    "bookings.csv": {
+      "bytes": 27572,
+      "sha256": "5db9a52e9591f7f92bc5d090316d27c244305552c1a11ec7f1e8f03573a4fae5",
+      "columns": [
+        "booking_id",
+        "room_id",
+        "created_utc",
+        "arrival_utc",
+        "departure_utc",
+        "guest_count",
+        "channel",
+        "status"
+      ],
+      "rows": 281,
+      "blank_cells": {}
+    },
+    "building.json": {
+      "bytes": 69964,
+      "sha256": "2f58f307c7c0c85628720f5b73777efa10833ea2e0c88711befc2db96f3cbe17",
+      "top_level_keys": [
+        "schema_version",
+        "model_id",
+        "model_kind",
+        "profile",
+        "time",
+        "building",
+        "staff",
+        "operations",
+        "constraints",
+        "scenario_classes",
+        "provenance"
+      ]
+    },
+    "decisions_sample.jsonl": {
+      "bytes": 2549,
+      "sha256": "7c80f68fc529b33e98f8f18529ea2016859ba4a33f1831324d25f498f6ab31b2",
+      "rows": 4,
+      "types": {
+        "schedule_cleaning": 1,
+        "notify_guest": 1,
+        "request_inspection": 1,
+        "order_service": 1
+      }
+    },
+    "energy.csv": {
+      "bytes": 122636,
+      "sha256": "a425cf9f683a519688c386711a58f444096846d079ef1b3d3ef52faadee04025",
+      "columns": [
+        "timestamp_utc",
+        "building_load_kw",
+        "hvac_electric_kw",
+        "pv_kw",
+        "battery_discharge_kw_signed",
+        "battery_soc_kwh",
+        "grid_import_kw",
+        "grid_export_kw"
+      ],
+      "rows": 2016,
+      "blank_cells": {}
+    },
+    "equipment.csv": {
+      "bytes": 704287,
+      "sha256": "1c3198681e7ce4682832697aea01fb112dde0cb8093858b4f1aa15f582dd2259",
+      "columns": [
+        "timestamp_utc",
+        "asset_id",
+        "metric",
+        "value"
+      ],
+      "rows": 16128,
+      "blank_cells": {
+        "value": 419
+      }
+    },
+    "events.jsonl": {
+      "bytes": 205746,
+      "sha256": "96754ab1ee4505a71bbc791888df03c6a539168d1202f8b701515614a6c0776f",
+      "rows": 1406,
+      "types": {
+        "stay_in_progress": 37,
+        "vending_restocked": 6,
+        "waste_pickup": 6,
+        "checkout": 209,
+        "robot_floor_cleaning_started": 180,
+        "cleaning_started": 213,
+        "robot_floor_cleaning_completed": 180,
+        "cleaning_completed": 215,
+        "checkin_early": 37,
+        "floor_bin_emptied": 24,
+        "checkin": 156,
+        "checkout_early": 6,
+        "arrival_waiting_room": 8,
+        "checkin_after_wait": 8,
+        "no_show": 5,
+        "bms_alarm": 114,
+        "oncall_housekeeping_called": 2
+      }
+    },
+    "guest_requests.csv": {
+      "bytes": 17581,
+      "sha256": "c54bfbda5c74676c9e966142c430397576d6f57bd377a180689e267b02afd532",
+      "columns": [
+        "request_id",
+        "timestamp_utc",
+        "room_id",
+        "booking_id",
+        "channel",
+        "language",
+        "request_type",
+        "text",
+        "priority",
+        "response_due_utc",
+        "requires_guest_consent"
+      ],
+      "rows": 112,
+      "blank_cells": {}
+    },
+    "insights_sample.jsonl": {
+      "bytes": 441,
+      "sha256": "5d0533efea47f826d73584100f8d8445df5a1359af761f13176b2ce495db975b",
+      "rows": 1,
+      "types": {
+        "other": 1
+      }
+    },
+    "logistics.csv": {
+      "bytes": 158043,
+      "sha256": "9efb76fe2071fd669359f5197498608f1d9aa30a60d17bf5ffacfcb7178ea88c",
+      "columns": [
+        "timestamp_utc",
+        "asset_id",
+        "metric",
+        "value"
+      ],
+      "rows": 3528,
+      "blank_cells": {}
+    },
+    "manifest.json": {
+      "bytes": 1002,
+      "sha256": "fe07a0995a5b596cda8e05e87446abb360452ae2f375a260eeb050d456274d44",
+      "top_level_keys": [
+        "model_id",
+        "dataset_version",
+        "profile",
+        "synthetic",
+        "start_utc",
+        "end_utc",
+        "days",
+        "interval_seconds",
+        "units",
+        "conventions",
+        "limitations"
+      ]
+    },
+    "room_telemetry.csv": {
+      "bytes": 4583002,
+      "sha256": "19c4a8bd0c1b9f6f36ec1091776a08596b778e5057ed88d70cf3a57b20516e3d",
+      "columns": [
+        "timestamp_utc",
+        "room_id",
+        "temperature_c",
+        "setpoint_c",
+        "humidity_pct",
+        "co2_ppm",
+        "presence",
+        "window_open",
+        "housekeeping_state"
+      ],
+      "rows": 80642,
+      "blank_cells": {
+        "window_open": 371,
+        "humidity_pct": 614,
+        "temperature_c": 473,
+        "co2_ppm": 694,
+        "presence": 370,
+        "setpoint_c": 210,
+        "housekeeping_state": 210
+      },
+      "duplicate_timestamp_room_keys": 2
+    },
+    "room_water.csv": {
+      "bytes": 2818008,
+      "sha256": "fe7cbbfe5920c82b6533547e4248600a74e5626c6746aebe7c2ba98a5d1bdb3c",
+      "columns": [
+        "timestamp_utc",
+        "room_id",
+        "meter_total_l"
+      ],
+      "rows": 80640,
+      "blank_cells": {
+        "meter_total_l": 368
+      }
+    },
+    "staff_roster.csv": {
+      "bytes": 10178,
+      "sha256": "935de29e596f4f9fd7f60a0676169225124181e242b8a0f36a50038c6415c6a6",
+      "columns": [
+        "shift_id",
+        "resource_id",
+        "role",
+        "start_utc",
+        "end_utc",
+        "status",
+        "status_known_utc"
+      ],
+      "rows": 102,
+      "blank_cells": {}
+    },
+    "tariff.csv": {
+      "bytes": 25194,
+      "sha256": "499abd970e6e1fb50049f5be9faf9476b95161cc34b214d94d661398ed8f508b",
+      "columns": [
+        "timestamp_utc",
+        "price_eur_kwh",
+        "published_utc"
+      ],
+      "rows": 504,
+      "blank_cells": {}
+    },
+    "water_main.csv": {
+      "bytes": 64541,
+      "sha256": "f03fd5b462d498c238afe02de1565843447e9ead17e551c539f34a672f656d55",
+      "columns": [
+        "timestamp_utc",
+        "meter_total_l"
+      ],
+      "rows": 2016,
+      "blank_cells": {}
+    },
+    "weather.csv": {
+      "bytes": 60060,
+      "sha256": "212c700f9ca63ac854ad7805b9d267608bcd208c156827cbc79001f3d366c2a3",
+      "columns": [
+        "timestamp_utc",
+        "outdoor_c",
+        "cloud_cover_pct"
+      ],
+      "rows": 2016,
+      "blank_cells": {}
+    },
+    "weather_forecast.csv": {
+      "bytes": 47400,
+      "sha256": "9279df57469992e665d9e3c39217bc0a8d69b87b072ec76420c0f0f4eb08cdec",
+      "columns": [
+        "issued_utc",
+        "target_utc",
+        "outdoor_c_forecast"
+      ],
+      "rows": 972,
+      "blank_cells": {}
+    },
+    "work_orders.csv": {
+      "bytes": 1666,
+      "sha256": "836b7859b1eb0dce599ddea281aede5d02b73957718b2d6ec00cace4911284e3",
+      "columns": [
+        "work_order_id",
+        "created_utc",
+        "asset_id",
+        "type",
+        "status",
+        "scheduled_utc",
+        "completed_utc",
+        "assigned_to",
+        "summary"
+      ],
+      "rows": 9,
+      "blank_cells": {}
+    }
+  }
+}

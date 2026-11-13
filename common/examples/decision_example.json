@@ -1,0 +1,18 @@
+{
+  "event_id": "DEC-GR000005-001",
+  "timestamp_utc": "2026-01-05T22:37:53Z",
+  "affected_assets": ["R308"],
+  "issue_type": "room_turnaround",
+  "action": "schedule_cleaning",
+  "priority": "medium",
+  "reason": "EXAMPLE ONLY: early check-in requested; schedule cleaning only if a cleaner is available and room is vacant; verify before actual release.",
+  "requires_human_approval": false,
+  "requires_guest_consent": false,
+  "autonomy": "autonomous",
+  "episode_id": "TURNAROUND-R308-2026-01-06",
+  "guest_request_ids": ["GR000005"],
+  "evidence": ["guest_requests.csv:GR000005"],
+  "verification_plan": "Verify prior guest checkout and room vacant; check clean status and inspection before release.",
+  "expected_outcome": "Simulated cleaning task is queued, not an observed room-ready time.",
+  "confidence": null
+}

@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hotel-operations-prototype"
+version = "0.1.0"
+description = "Offline hotel operations prototype for the PLATO-40 challenge"
+requires-python = ">=3.11"
+dependencies = ["pydantic>=2.7,<3"]
+license = "MIT"
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10"]
+
+[tool.setuptools.packages.find]
+include = ["common*", "ingestion*", "engine*"]
+exclude = ["common.tests*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["common/tests", "tests"]

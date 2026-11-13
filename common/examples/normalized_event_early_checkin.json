@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0",
+  "event_id": "guest:GR000005",
+  "timestamp_utc": "2026-01-05T22:37:53Z",
+  "available_at_utc": "2026-01-05T22:37:53Z",
+  "event_type": "guest_request",
+  "source": {
+    "file": "guest_requests.csv",
+    "record_id": "GR000005",
+    "timestamp_utc": "2026-01-05T22:37:53Z"
+  },
+  "entities": {
+    "room_id": "R308",
+    "booking_id": "BK000173",
+    "guest_request_id": "GR000005",
+    "asset_id": null,
+    "resource_id": null
+  },
+  "priority_hint": "medium",
+  "payload": {
+    "request_type": "early_checkin",
+    "original_text": "Wir kommen schon gegen 13:00 an, wäre ein früherer Check-in möglich?",
+    "language": "de",
+    "response_due_utc": "2026-01-06T01:37:53Z",
+    "requires_guest_consent": "not_required",
+    "intents": [
+      {
+        "intent": "early_checkin",
+        "requested_time_utc": "2026-01-06T12:00:00Z",
+        "requested_time_text": "gegen 13:00",
+        "evidence_quote": "Wir kommen schon gegen 13:00 an",
+        "details": {"approximate_time": true},
+        "needs_review": false
+      }
+    ]
+  },
+  "extraction": {
+    "method": "llm",
+    "model_name": null,
+    "needs_review": false,
+    "uncertain_fields": []
+  }
+}

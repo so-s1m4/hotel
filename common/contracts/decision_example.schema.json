@@ -1,0 +1,169 @@
+{
+  "additionalProperties": false,
+  "description": "Output specified by organizers (dataset DECISION_CONTRACT.md).",
+  "properties": {
+    "event_id": {
+      "minLength": 1,
+      "title": "Event Id",
+      "type": "string"
+    },
+    "timestamp_utc": {
+      "title": "Timestamp Utc",
+      "type": "string"
+    },
+    "affected_assets": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Affected Assets",
+      "type": "array"
+    },
+    "issue_type": {
+      "minLength": 1,
+      "title": "Issue Type",
+      "type": "string"
+    },
+    "action": {
+      "minLength": 1,
+      "title": "Action",
+      "type": "string"
+    },
+    "priority": {
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low"
+      ],
+      "title": "Priority",
+      "type": "string"
+    },
+    "reason": {
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+    },
+    "requires_human_approval": {
+      "title": "Requires Human Approval",
+      "type": "boolean"
+    },
+    "autonomy": {
+      "anyOf": [
+        {
+          "enum": [
+            "autonomous",
+            "human_approval",
+            "approval_and_consent"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Autonomy"
+    },
+    "episode_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Episode Id"
+    },
+    "evidence": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Evidence",
+      "type": "array"
+    },
+    "expected_outcome": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Expected Outcome"
+    },
+    "verification_plan": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Verification Plan"
+    },
+    "dependencies": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Dependencies",
+      "type": "array"
+    },
+    "guest_request_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Guest Request Ids",
+      "type": "array"
+    },
+    "requires_guest_consent": {
+      "default": false,
+      "title": "Requires Guest Consent",
+      "type": "boolean"
+    },
+    "resource_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Resource Id"
+    },
+    "confidence": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Confidence"
+    }
+  },
+  "required": [
+    "event_id",
+    "timestamp_utc",
+    "affected_assets",
+    "issue_type",
+    "action",
+    "priority",
+    "reason",
+    "requires_human_approval"
+  ],
+  "title": "DecisionRecordV2",
+  "type": "object"
+}

@@ -1,0 +1,207 @@
+[
+  {
+    "path": "A_LESHA_DATA_LLM/.DS_Store",
+    "bytes": 10244,
+    "sha256": "56c56c550741ddb9fd3c7dc3b2540f832080fe3a7ca88fcaec415dc65badb420"
+  },
+  {
+    "path": "A_LESHA_DATA_LLM/PROMPT_A_LESHA_DATA_LLM.md",
+    "bytes": 12003,
+    "sha256": "afe61a618148595c6901219241f1fef967454c2657564723c72fb5d4b325567c"
+  },
+  {
+    "path": "A_LESHA_DATA_LLM/START_HERE.md",
+    "bytes": 525,
+    "sha256": "940af31a162dbe96576661f80d17314d2583da78b769ce1d4c5b48d80238f2e4"
+  },
+  {
+    "path": "A_LESHA_DATA_LLM/common/00_READ_ME_FIRST.md",
+    "bytes": 3149,
+    "sha256": "42b5b650566ba13b2e7e4ceffbc76219cf7a3b4a233152b54c752405e074fa80"
+  },
+  {
+    "path": "A_LESHA_DATA_LLM/common/01_CONTRACT.md",
+    "bytes": 18133,
+    "sha256": "37523f9a48242b2a350da4055e5bcdf9444b4d7c0813aff683c43e20ce5c67ba"
+  },
+  {
+    "path": "A_LESHA_DATA_LLM/common/02_DATA_AUDIT.md",
+    "bytes": 6002,
+    "sha256": "4aebbf37d8a3d21b654d2f4a9fc4b5d338a61ae66ad29edbd0be36ef2705112a"
+  },
+  {
+    "path": "A_LESHA_DATA_LLM/common/__init__.py",
+    "bytes": 57,
+    "sha256": "2793037d4c39430d56a6185bde9b0df16fc728c848dc111e5be86f6cca2e5865"
+  },
+  {
+    "path": "A_LESHA_DATA_LLM/common/contracts/__init__.py",
+    "bytes": 160,
+    "sha256": "c14895cbb77a657ac6fc8d5012f113f8c06c868d120ed9e0358b1eec712fdfd6"
+  },
+  {
+    "path": "A_LESHA_DATA_LLM/common/contracts/api.py",
+    "bytes": 2453,
+    "sha256": "e6ee47ad73903591e8e3f0ba4bdaf0c1b86e8476ce9778cc56c01a03020649f8"
+  },
+  {
+    "path": "A_LESHA_DATA_LLM/common/contracts/decision_example.schema.json",
+    "bytes": 3175,
+    "sha256": "8b781b960e9458b19b4404834b669fc964483ee6b042ea19ee47addd6c35c9ed"
+  },
+  {
+    "path": "A_LESHA_DATA_LLM/common/contracts/normalized_event_early_checkin.schema.json",
+    "bytes": 4920,
+    "sha256": "cde17a21b94de0150a24a574ce4ddbb9f0b1c835cc33bdf981aeff2024a9000f"
+  },
+  {
+    "path": "A_LESHA_DATA_LLM/common/contracts/schemas.py",
+    "bytes": 6673,
+    "sha256": "9675220e64fd6b5f7ffd51f7a900f236460fdfb3d26e331f48da7dbabf3f0215"
+  },
+  {
+    "path": "A_LESHA_DATA_LLM/common/examples/decision_example.json",
+    "bytes": 822,
+    "sha256": "b31ac4edea192487682590860ac55ae025b361bea55a8f7accae2e17434dd5fa"
+  },
+  {
+    "path": "A_LESHA_DATA_LLM/common/examples/normalized_event_early_checkin.json",
+    "bytes": 1198,
+    "sha256": "6c290d4926fdb8d1f07e46bf2a88ac212a806113567c27cd7c7fb270e70fa554"
+  },
+  {
+    "path": "A_LESHA_DATA_LLM/common/requirements-contract.txt",
+    "bytes": 31,
+    "sha256": "be6b1cdedd8e788d1f0c3a4d10192c0d06e94427aa9e5a64a5df33ccb503c1f6"
+  },
+  {
+    "path": "A_LESHA_DATA_LLM/common/tests/test_contract.py",
+    "bytes": 1569,
+    "sha256": "f3b117caf1e165f9422f93e29f5d473e1e1b1907afd106a400f61d0e986dd93a"
+  },
+  {
+    "path": "A_LESHA_DATA_LLM/source_data/PLATO40_v2_CHALLENGE.pdf",
+    "bytes": 293462,
+    "sha256": "aee044d3719341c3b6312ed50d14a1c0634bf3cdef481d1baceee7165b13bd4b"
+  },
+  {
+    "path": "A_LESHA_DATA_LLM/source_data/PLATO40_v2_dev.zip",
+    "bytes": 20301786,
+    "sha256": "b423b1dcc2fc157c6a5f4713feb779f310674408e89b012a455d5884c458c0c9"
+  },
+  {
+    "path": "A_LESHA_DATA_LLM/source_data/PLATO40_v2_quickstart.zip",
+    "bytes": 1184275,
+    "sha256": "e7f511adddcaa9ac38459e9e5bef327c09fc7c294645f24b32a46319b73050c0"
+  },
+  {
+    "path": "PLATO40_v2_CHALLENGE.pdf",
+    "bytes": 293462,
+    "sha256": "aee044d3719341c3b6312ed50d14a1c0634bf3cdef481d1baceee7165b13bd4b"
+  },
+  {
+    "path": "PLATO40_v2_dev.zip",
+    "bytes": 20301786,
+    "sha256": "b423b1dcc2fc157c6a5f4713feb779f310674408e89b012a455d5884c458c0c9"
+  },
+  {
+    "path": "PLATO40_v2_holdout_encrypted.7z",
+    "bytes": 17218451,
+    "sha256": "50a8c87d0a41a6d18d081cbce6e0308ff4f8dc923f0bc11d5d513ca7d7b14f88"
+  },
+  {
+    "path": "PLATO40_v2_quickstart.zip",
+    "bytes": 1184275,
+    "sha256": "e7f511adddcaa9ac38459e9e5bef327c09fc7c294645f24b32a46319b73050c0"
+  },
+  {
+    "path": "decision_engine_full/PROMPT_B_MAKSYM_DECISION_ENGINE.md",
+    "bytes": 12527,
+    "sha256": "88c539c618ba9c555ab677a1e172b88eb12c87d4708a458b27f1f57381fae301"
+  },
+  {
+    "path": "decision_engine_full/START_HERE.md",
+    "bytes": 541,
+    "sha256": "cb8bee698c82d4f6ffab21915b6d2a8adc74c11e05d48c56c8ad8d90bc94d90d"
+  },
+  {
+    "path": "decision_engine_full/common/00_READ_ME_FIRST.md",
+    "bytes": 3149,
+    "sha256": "42b5b650566ba13b2e7e4ceffbc76219cf7a3b4a233152b54c752405e074fa80"
+  },
+  {
+    "path": "decision_engine_full/common/01_CONTRACT.md",
+    "bytes": 18133,
+    "sha256": "37523f9a48242b2a350da4055e5bcdf9444b4d7c0813aff683c43e20ce5c67ba"
+  },
+  {
+    "path": "decision_engine_full/common/02_DATA_AUDIT.md",
+    "bytes": 6002,
+    "sha256": "4aebbf37d8a3d21b654d2f4a9fc4b5d338a61ae66ad29edbd0be36ef2705112a"
+  },
+  {
+    "path": "decision_engine_full/common/__init__.py",
+    "bytes": 57,
+    "sha256": "2793037d4c39430d56a6185bde9b0df16fc728c848dc111e5be86f6cca2e5865"
+  },
+  {
+    "path": "decision_engine_full/common/contracts/__init__.py",
+    "bytes": 160,
+    "sha256": "c14895cbb77a657ac6fc8d5012f113f8c06c868d120ed9e0358b1eec712fdfd6"
+  },
+  {
+    "path": "decision_engine_full/common/contracts/api.py",
+    "bytes": 2453,
+    "sha256": "e6ee47ad73903591e8e3f0ba4bdaf0c1b86e8476ce9778cc56c01a03020649f8"
+  },
+  {
+    "path": "decision_engine_full/common/contracts/decision_example.schema.json",
+    "bytes": 3175,
+    "sha256": "8b781b960e9458b19b4404834b669fc964483ee6b042ea19ee47addd6c35c9ed"
+  },
+  {
+    "path": "decision_engine_full/common/contracts/normalized_event_early_checkin.schema.json",
+    "bytes": 4920,
+    "sha256": "cde17a21b94de0150a24a574ce4ddbb9f0b1c835cc33bdf981aeff2024a9000f"
+  },
+  {
+    "path": "decision_engine_full/common/contracts/schemas.py",
+    "bytes": 6673,
+    "sha256": "9675220e64fd6b5f7ffd51f7a900f236460fdfb3d26e331f48da7dbabf3f0215"
+  },
+  {
+    "path": "decision_engine_full/common/examples/decision_example.json",
+    "bytes": 822,
+    "sha256": "b31ac4edea192487682590860ac55ae025b361bea55a8f7accae2e17434dd5fa"
+  },
+  {
+    "path": "decision_engine_full/common/examples/normalized_event_early_checkin.json",
+    "bytes": 1198,
+    "sha256": "6c290d4926fdb8d1f07e46bf2a88ac212a806113567c27cd7c7fb270e70fa554"
+  },
+  {
+    "path": "decision_engine_full/common/requirements-contract.txt",
+    "bytes": 31,
+    "sha256": "be6b1cdedd8e788d1f0c3a4d10192c0d06e94427aa9e5a64a5df33ccb503c1f6"
+  },
+  {
+    "path": "decision_engine_full/common/tests/test_contract.py",
+    "bytes": 1569,
+    "sha256": "f3b117caf1e165f9422f93e29f5d473e1e1b1907afd106a400f61d0e986dd93a"
+  },
+  {
+    "path": "decision_engine_full/source_data/PLATO40_v2_CHALLENGE.pdf",
+    "bytes": 293462,
+    "sha256": "aee044d3719341c3b6312ed50d14a1c0634bf3cdef481d1baceee7165b13bd4b"
+  },
+  {
+    "path": "decision_engine_full/source_data/PLATO40_v2_dev.zip",
+    "bytes": 20301786,
+    "sha256": "b423b1dcc2fc157c6a5f4713feb779f310674408e89b012a455d5884c458c0c9"
+  },
+  {
+    "path": "decision_engine_full/source_data/PLATO40_v2_quickstart.zip",
+    "bytes": 1184275,
+    "sha256": "e7f511adddcaa9ac38459e9e5bef327c09fc7c294645f24b32a46319b73050c0"
+  }
+]
