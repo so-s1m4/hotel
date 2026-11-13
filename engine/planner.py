@@ -132,7 +132,7 @@ class _EventTransaction:
                      (engine.executor.audit, engine.rejections, engine.calendar.cancellations, engine.work_orders)]
         self.touched = {}
         self.scalars = {key: getattr(engine, key) for key in
-                        ("_observed_hydrated", "_cancellation_cursor", "_outbox")}
+                        ("_observed_hydrated", "_observed_query_utc", "_cancellation_cursor", "_outbox")}
         self.calendar_scalars = {key: value for key, value in vars(engine.calendar).items()
                                  if not isinstance(value, (dict, set, list))}
         self.notification_suppressed = engine.notifications.suppressed
@@ -208,6 +208,7 @@ class DecisionEngine:
         self.notifications = NotificationLedger()
         self._observed_event_ids = set()
         self._observed_hydrated = False
+        self._observed_query_utc = None
         self._observed_completions = {}
         self._cancellation_cursor = 0
         self._outbox = []
@@ -397,35 +398,48 @@ class DecisionEngine:
     def _observe_activity(self, event):
         now = event.available_at_utc
         raw_events = []
-        if not self._observed_hydrated:
-            raw_events.extend(self.repo.get_events("1970-01-01T00:00:00Z", now, now))
+        if (not self._observed_hydrated or self._observed_query_utc is None
+                or instant(now) > instant(self._observed_query_utc)):
+            # Gateway room state already includes every fact queryable as of
+            # now. Hydrate the calendar against that same knowledge boundary,
+            # not just the prefix of equal-time normalized envelopes delivered.
+            begin = self._observed_query_utc if self._observed_hydrated and self._observed_query_utc else "1970-01-01T00:00:00Z"
+            raw_events.extend(self.repo.get_events(begin, now, now))
             self._observed_hydrated = True
+            self._observed_query_utc = now
         if event.event_type == "operational_event":
             raw_events.append({**event.payload, "event_id": event.source.record_id,
                                "timestamp_utc": event.timestamp_utc,
+                               "available_at_utc": now,
                                "room_id": event.payload.get("room_id") or event.entities.room_id,
                                "resource_id": event.payload.get("resource_id") or event.entities.resource_id})
         starts = {"cleaning_started": "cleaner", "robot_floor_cleaning_started": "robot"}
         ends = {"cleaning_completed", "robot_floor_cleaning_completed"}
+        checkins = {"checkin", "checkin_early", "checkin_after_wait", "stay_in_progress"}
+        checkouts = {"checkout", "checkout_early"}
+        activity_types = checkins | checkouts | starts.keys() | ends
         for raw in sorted(raw_events, key=lambda r: (r.get("timestamp_utc", ""), r.get("event_id", ""))):
             stamp = raw.get("timestamp_utc")
-            if not stamp or instant(stamp) > instant(now):
+            known = raw.get("available_at_utc") or stamp
+            if not stamp or instant(stamp) > instant(now) or (known and instant(known) > instant(now)):
                 continue
             kind = raw.get("type")
             if not isinstance(kind, str):
                 continue  # Unknown operational payload cannot establish observed work.
-            if kind in {"checkout", "checkout_early"} and raw.get("room_id"):
-                self._advance_occurrence(self.calendar.last_dirty_trigger, raw["room_id"], stamp)
-            if kind in {"checkin", "checkin_early", "checkin_after_wait", "stay_in_progress"} and raw.get("room_id"):
-                for start, end, decision_id in self.calendar.room_jobs(raw["room_id"]):
-                    if instant(end) > instant(now):
-                        self._cancel_tree(decision_id, f"Observed guest occupancy {raw.get('event_id')} at {stamp}; room-entry proposal must be withdrawn")
-            if kind not in starts and kind not in ends:
+            if kind not in activity_types:
                 continue
             ident = raw.get("event_id") or stable_id("observed", stamp, kind, str(raw.get("room_id")), str(raw.get("resource_id")))
             if ident in self._observed_event_ids:
                 continue
             self._observed_event_ids.add(ident)
+            if kind in checkouts and raw.get("room_id"):
+                self._advance_occurrence(self.calendar.last_dirty_trigger, raw["room_id"], stamp)
+            if kind in checkins and raw.get("room_id"):
+                for start, end, decision_id in self.calendar.room_jobs(raw["room_id"]):
+                    if instant(end) > instant(now):
+                        self._cancel_tree(decision_id, f"Observed guest occupancy {raw.get('event_id')} at {stamp}; room-entry proposal must be withdrawn")
+            if kind not in starts and kind not in ends:
+                continue
             resource, room = raw.get("resource_id"), raw.get("room_id")
             resource = resource if resource in self.calendar.resource_roles else None
             role = "robot" if kind.startswith("robot_") else "cleaner"
