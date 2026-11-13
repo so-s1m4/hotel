@@ -2,7 +2,8 @@
 
 The filesystem has no multi-file atomic replace. A failed replacement restores
 prior files where possible; failed restoration is explicitly reported as partial
-publication. This protects ordinary write failures, not machine power loss.
+publication. Handled Python interrupts also trigger rollback; this is not machine power-loss
+atomicity.
 """
 from __future__ import annotations
 
@@ -82,9 +83,11 @@ def publish_artifacts(writers: Mapping[Path, Callable[[Path], object]]):
     """
     staged = {}
     backups = {}
-    published = []
+    attempted = []
     temporary = []
     recovery_backups = set()
+    publication_succeeded = False
+    failure = None
     try:
         for raw, writer in writers.items():
             destination = Path(raw)
@@ -109,34 +112,81 @@ def publish_artifacts(writers: Mapping[Path, Callable[[Path], object]]):
             else:
                 backup = None
             backups[destination] = backup
+            if backup is not None:
+                recovery_backups.add(backup)
         for destination, stage in staged.items():
+            # Register before the syscall: an interrupt can arrive after the OS
+            # replaced the file but before Python records its successful return.
+            attempted.append(destination)
             os.replace(stage,destination)
-            published.append(destination)
-    except (OSError, ValueError, TypeError) as exc:
+        publication_succeeded = True
+    except BaseException as exc:
+        publication_succeeded = False
+        failure = exc
         rollback_errors = []
         changed = []
-        for destination in reversed(published):
+        rollback_interrupt = None
+        restoration_attempted = False
+        for destination in reversed(attempted):
+            backup = backups[destination]
             try:
-                backup = backups[destination]
+                # Atomic replacement consumes its source. A surviving stage
+                # proves this attempt did not replace the destination, so do
+                # not rewrite a still-original file just because it was tried.
+                if staged[destination].exists():
+                    recovery_backups.discard(backup)
+                    continue
+                restoration_attempted = True
                 if backup is None:
-                    destination.unlink()
+                    destination.unlink(missing_ok=True)
                 else:
                     os.replace(backup,destination)
-            except OSError as rollback_error:
+            except BaseException as rollback_error:
                 changed.append(destination)
-                backup = backups[destination]
-                if backup is not None:
-                    recovery_backups.add(backup)
-                rollback_errors.append(f'{destination}: {rollback_error}; recovery backup: {backup}')
-        state = 'partial_publication' if changed else 'rolled_back' if published else 'not_published'
-        raise OutputPublicationError(exc,state=state,changed=changed,rollback_errors=rollback_errors) from exc
+                rollback_errors.append(f'{destination}: {type(rollback_error).__name__}: {rollback_error}; recovery backup: {backup}')
+                if not isinstance(rollback_error, Exception) and rollback_interrupt is None:
+                    rollback_interrupt = rollback_error
+            else:
+                recovery_backups.discard(backup)
+        # Backups for destinations never attempted are unnecessary. Failed
+        # restores stay protected, even if restoration itself was interrupted.
+        for destination, backup in backups.items():
+            if destination not in changed:
+                recovery_backups.discard(backup)
+        state = 'partial_publication' if changed else 'rolled_back' if restoration_attempted else 'not_published'
+        metadata = {
+            'publication_state': state,
+            'changed_paths': [str(path) for path in changed],
+            'rollback_errors': rollback_errors,
+            'recovery_backups': [str(path) for path in sorted(recovery_backups)],
+        }
+        # A cancellation raised during rollback also remains a cancellation.
+        # If publication was already interrupted, retain that original object.
+        propagate = exc if not isinstance(exc, Exception) or rollback_interrupt is None else rollback_interrupt
+        for key, value in metadata.items():
+            setattr(propagate, key, value)
+        propagate.add_note(f'Output publication {state}; possibly changed files: {metadata["changed_paths"]}; '
+                           f'recovery backups: {metadata["recovery_backups"]}; rollback errors: {rollback_errors}')
+        if propagate is not exc:
+            failure = propagate
+            raise propagate from exc
+        if isinstance(exc, (OSError, ValueError, TypeError)):
+            wrapped = OutputPublicationError(exc,state=state,changed=changed,rollback_errors=rollback_errors)
+            wrapped.recovery_backups = metadata['recovery_backups']
+            failure = wrapped
+            raise wrapped from exc
+        raise
     finally:
         for path in temporary:
-            if path in recovery_backups:
+            if not publication_succeeded and path in recovery_backups:
                 continue
             try:
                 path.unlink(missing_ok=True)
-            except OSError:
-                # Cleanup cannot turn a completed generation into a failed run.
-                # Publication/rollback failures themselves are reported above.
-                pass
+            except BaseException as cleanup_error:
+                if failure is not None:
+                    failure.add_note(f'Temporary cleanup did not finish for {path}: {type(cleanup_error).__name__}')
+                elif not isinstance(cleanup_error, OSError):
+                    # Every output has been published at this point. Preserve
+                    # an interrupt during cleanup rather than report success.
+                    cleanup_error.add_note('Output generation was fully published before temporary cleanup was interrupted.')
+                    raise

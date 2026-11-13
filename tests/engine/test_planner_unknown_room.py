@@ -65,3 +65,21 @@ def test_none_room_unknown_identity_is_reviewed_then_closed_at_48_hours():
     assert not engine.rejections
     assert not engine.calendar.reservations
     assert not engine.calendar.tentative_reservations
+def test_rejected_guest_identity_still_advances_known_time_for_pending_approval():
+    import pytest
+    from engine.planner import DecisionEngine
+    from engine.safety import SafetyViolation
+    from tests.engine.fixtures import BUILDING, FakeGateway, request
+    from tests.engine.test_safety_audit import oncall_proposal
+
+    engine = DecisionEngine(FakeGateway(), BUILDING)
+    proposal, context = oncall_proposal("R101")
+    context["calendar"] = engine.calendar
+    engine.calendar.current_time = proposal.timestamp_utc
+    assert engine.executor.execute(proposal, context)["status"] == "pending_human_approval"
+    later = request(t="2026-01-06T15:30:00Z", room="R999", rid="INVALID_ROOM")
+    assert engine.process(later) == []
+    assert engine.calendar.current_time == later.available_at_utc
+    with pytest.raises(SafetyViolation):
+        engine.executor.execute(proposal, {**context, "human_approval_granted": True})
+    assert len(engine.executor.audit) == 1

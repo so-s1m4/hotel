@@ -199,3 +199,133 @@ def test_capacity_withdrawal_is_rolled_back_if_later_detector_fails(monkeypatch)
     monkeypatch.setattr(engine.optimization,'detect',original)
     rows=engine.process(tick('2026-01-06T09:15:00Z'))
     assert sum(row.action=='defer_action' and first.event_id in row.dependencies for row in rows)==1
+
+
+@pytest.mark.parametrize('policy_pct,main_liters',[(95,825),(100,880)])
+def test_fresh_source_growth_withdraws_future_whole_bin_command_before_overflow(policy_pct,main_liters):
+    from engine.core import EngineConfig
+    repo=logistics_repo(main=main_liters/1100*100)
+    repo.slots=[slot(resource='ROBOT_1',role='robot',shift_id='SHR',start='2026-01-06T10:30:00Z')]
+    engine=DecisionEngine(repo,full_building(),EngineConfig(container_max_fill_pct=policy_pct))
+    first=next(row for row in engine.process(tick()) if row.action=='dispatch_robot')
+    observation(repo,'WASTE_F1',100,'2026-01-06T09:15:00Z')
+    rows=engine.process(tick('2026-01-06T09:15:00Z'))
+    assert main_liters+216 <= 1100*policy_pct/100
+    assert main_liters+240 > 1100*policy_pct/100
+    assert first.event_id in engine.calendar._cancelled_ids
+    assert not engine.calendar.reservations['ROBOT_1']
+    assert not engine.calendar.volume_reservations['WASTE_MAIN']
+    assert 'WASTE_F1' not in engine.logistics.open_transfers
+    assert first.event_id not in engine.logistics.destination_commitments
+    correction=next(row for row in rows if row.action=='defer_action' and first.event_id in row.dependencies)
+    assert 'logistics.csv:WASTE_F1:fill_pct:2026-01-06T09:15:00Z' in correction.evidence
+    assert all(row.action!='dispatch_robot' for row in rows)
+    original_audit=next(row for row in engine.executor.audit if row['decision_id']==first.event_id)
+    assert original_audit['parameters']['transfer_liters']==216
+
+
+def test_source_growth_with_headroom_requires_new_id_and_retains_enlarged_uncertain_commitment():
+    repo,engine,first=setup(main=600/1100*100)
+    observation(repo,'WASTE_F1',100,'2026-01-06T09:15:00Z')
+    quarter_rows=engine.process(tick('2026-01-06T09:15:00Z'))
+    assert first.event_id in engine.calendar._cancelled_ids
+    assert all(row.action!='dispatch_robot' for row in quarter_rows)
+    assert not engine.calendar.volume_reservations['WASTE_MAIN']
+    observation(repo,'WASTE_F1',100,'2026-01-06T10:00:00Z')
+    observation(repo,'WASTE_MAIN',600/1100*100,'2026-01-06T10:00:00Z')
+    second=next(row for row in engine.process(tick('2026-01-06T10:00:00Z')) if row.action=='dispatch_robot')
+    assert second.event_id!=first.event_id
+    assert engine.calendar.volume_reservations['WASTE_MAIN']==[(second.event_id,240)]
+    assert engine._proposals[first.event_id].context['transfer_liters']==216
+    assert engine._proposals[second.event_id].context['transfer_liters']==240
+    # The second task's scheduled end is 10:50. Source empty at11:00 does
+    # not prove destination capacity, whose last observation remains10:00.
+    observation(repo,'WASTE_F1',0,'2026-01-06T11:00:00Z')
+    observation(repo,'WASTE_F2',90,'2026-01-06T11:00:00Z')
+    later_rows=engine.process(tick('2026-01-06T11:00:00Z'))
+    assert second.event_id not in engine.calendar._cancelled_ids
+    assert (second.event_id,240) in engine.calendar.volume_reservations['WASTE_MAIN']
+    assert first.event_id not in dict(engine.calendar.volume_reservations['WASTE_MAIN'])
+    assert second.event_id in engine.logistics.destination_commitments
+    # The obsolete216L amount would permit a second216L transfer; the
+    # actual240L uncertainty must block it against the stale600L destination.
+    assert 600+216+216 <= 1045 < 600+240+216
+    assert not any(row.action=='dispatch_robot' and row.affected_assets==['WASTE_F2'] for row in later_rows)
+    assert any(row.action=='flag_anomaly' and row.affected_assets==['WASTE_F2'] for row in later_rows)
+
+
+@pytest.mark.parametrize('value',[None,-1,101,float('nan')])
+def test_invalid_latest_source_does_not_zero_or_resize_future_volume_commitment(value):
+    repo,engine,first=setup()
+    observation(repo,'WASTE_F1',value,'2026-01-06T09:15:00Z')
+    rows=engine.process(tick('2026-01-06T09:15:00Z'))
+    assert first.event_id not in engine.calendar._cancelled_ids
+    assert engine.calendar.volume_reservations['WASTE_MAIN']==[(first.event_id,216)]
+    assert all(row.action!='dispatch_robot' for row in rows)
+
+
+def test_future_source_growth_cannot_change_a_present_reservation():
+    repo,engine,first=setup()
+    observation(repo,'WASTE_F1',100,'2026-01-06T09:30:00Z')
+    engine.process(tick('2026-01-06T09:15:00Z'))
+    assert first.event_id not in engine.calendar._cancelled_ids
+    assert engine.calendar.volume_reservations['WASTE_MAIN']==[(first.event_id,216)]
+
+
+def test_stale_source_growth_does_not_infer_zero_or_rewrite_the_old_command():
+    repo,engine,first=setup(start='2026-01-06T10:35:00Z')
+    # No scan disclosed this reading while fresh. At10:30 it is75min old.
+    observation(repo,'WASTE_F1',100,'2026-01-06T09:15:00Z')
+    observation(repo,'WASTE_MAIN',30,'2026-01-06T10:30:00Z')
+    engine.process(tick('2026-01-06T10:30:00Z'))
+    assert first.event_id not in engine.calendar._cancelled_ids
+    assert engine.calendar.volume_reservations['WASTE_MAIN']==[(first.event_id,216)]
+    assert engine._proposals[first.event_id].context['transfer_liters']==216
+
+
+def test_post_start_source_growth_preserves_the_unverified_destination_commitment():
+    repo,engine,first=setup(start='2026-01-06T08:00:00Z')
+    observation(repo,'WASTE_F1',100,'2026-01-06T10:00:00Z')
+    rows=engine.process(tick('2026-01-06T10:00:00Z'))
+    assert first.event_id not in engine.calendar._cancelled_ids
+    assert engine.calendar.volume_reservations['WASTE_MAIN']==[(first.event_id,216)]
+    assert engine.logistics.open_transfers['WASTE_F1']['decision_id']==first.event_id
+    assert all(row.action!='dispatch_robot' for row in rows)
+
+
+def test_growth_at_the_planned_start_boundary_withdraws_before_assuming_execution():
+    repo,engine,first=setup()
+    observation(repo,'WASTE_F1',100,'2026-01-06T10:30:00Z')
+    observation(repo,'WASTE_MAIN',30,'2026-01-06T10:30:00Z')
+    rows=engine.process(tick('2026-01-06T10:30:00Z'))
+    assert first.event_id in engine.calendar._cancelled_ids
+    assert not engine.calendar.volume_reservations['WASTE_MAIN']
+    assert any(row.action=='defer_action' and first.event_id in row.dependencies for row in rows)
+
+
+def test_fresh_source_reduction_also_requires_replanning_the_whole_bin_command():
+    repo,engine,first=setup()
+    observation(repo,'WASTE_F1',80,'2026-01-06T09:15:00Z')
+    engine.process(tick('2026-01-06T09:15:00Z'))
+    assert first.event_id in engine.calendar._cancelled_ids
+    assert not engine.calendar.volume_reservations['WASTE_MAIN']
+    assert engine._proposals[first.event_id].context['transfer_liters']==216
+
+
+def test_source_volume_replan_is_atomic_when_a_later_detector_read_fails(monkeypatch):
+    from tests.engine.test_planner_transactions import frozen
+    repo,engine,first=setup()
+    observation(repo,'WASTE_F1',100,'2026-01-06T09:15:00Z')
+    before=frozen(engine)
+    original=engine.optimization.detect
+    def fail_after_growth_withdrawal(*args,**kwargs):
+        assert first.event_id in engine.calendar._cancelled_ids
+        assert not engine.calendar.volume_reservations['WASTE_MAIN']
+        raise OSError('after whole-bin command withdrawal')
+    monkeypatch.setattr(engine.optimization,'detect',fail_after_growth_withdrawal)
+    with pytest.raises(OSError,match='whole-bin command withdrawal'):
+        engine.process(tick('2026-01-06T09:15:00Z'))
+    assert frozen(engine)==before
+    monkeypatch.setattr(engine.optimization,'detect',original)
+    rows=engine.process(tick('2026-01-06T09:15:00Z'))
+    assert sum(row.action=='defer_action' and first.event_id in row.dependencies for row in rows)==1

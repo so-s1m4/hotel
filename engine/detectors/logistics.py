@@ -167,6 +167,18 @@ class LogisticsDetector:
                 commitment["start_utc"] = starts[ident]
             row = fresh.get((asset, "fill_pct"))
             value = number(row.get("value")) if row else None
+            source_capacity = number(assets.get(asset, {}).get("volume_l"))
+            reserved = dict(calendar.volume_reservations.get("WASTE_MAIN", [])).get(ident)
+            if (commitment.get("start_utc") and instant(now) <= instant(commitment["start_utc"])
+                    and value is not None and 40 <= value <= 100 and source_capacity and source_capacity > 0
+                    and reserved is not None and abs(source_capacity*value/100-reserved) > 1e-8):
+                # A carry-bin command transports the whole observed source.
+                # Replacing its immutable amount under the old ID would hide
+                # new capacity requirements, even if today's headroom fits.
+                self._cancel_transfer(result, calendar, asset, held,
+                    f"Fresh source level at {row['timestamp_utc']} changes the whole-bin volume from {reserved:.6g} L to {source_capacity*value/100:.6g} L; withdraw the immutable future command and replan with a new ID",
+                    [f"logistics.csv:{asset}:fill_pct:{row['timestamp_utc']}"])
+                continue
             recovery = row["timestamp_utc"] if value is not None and 0 <= value < 40 else None
             if updates.get(asset) and (not row or instant(updates[asset]) > instant(row["timestamp_utc"])):
                 recovery = updates[asset]

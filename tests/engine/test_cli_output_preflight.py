@@ -186,3 +186,105 @@ def test_config_input_cannot_be_used_as_output(cli):
     with pytest.raises(SystemExit):cli.invoke('--config',config,audit_path=config)
     assert not cli.calls and config.read_text()=='{}'
     assert_old(cli)
+
+
+@pytest.mark.parametrize('kind',['keyboard','system_exit'])
+@pytest.mark.parametrize('point',['before_first','after_first_return','before_second'])
+def test_python_control_flow_interrupt_rolls_back_and_preserves_original_exception(cli,monkeypatch,capsys,kind,point):
+    original_inodes={path:path.stat().st_ino for path in cli.old}
+    interruption=KeyboardInterrupt('publication cancelled') if kind=='keyboard' else SystemExit(17)
+    replace=os.replace
+    def interrupt(source,destination):
+        stage=Path(source).name.startswith('.hotel-stage-')
+        if stage and Path(destination)==cli.out:
+            if point=='before_first':raise interruption
+            result=replace(source,destination)
+            if point=='after_first_return':raise interruption
+            return result
+        if stage and Path(destination)==cli.audit and point=='before_second':raise interruption
+        return replace(source,destination)
+    monkeypatch.setattr(output.os,'replace',interrupt)
+    with pytest.raises(type(interruption)) as error:cli.invoke()
+    assert error.value is interruption
+    assert error.value.publication_state==('not_published' if point=='before_first' else 'rolled_back')
+    if point=='before_first':
+        assert {path:path.stat().st_ino for path in cli.old}==original_inodes
+    if kind=='system_exit':assert error.value.code==17
+    assert_old(cli)
+    assert not list(cli.root.glob('.hotel-*'))
+    captured=capsys.readouterr()
+    assert 'replay_complete' not in captured.out
+    assert 'Output generation failed' not in captured.err
+
+
+@pytest.mark.parametrize('rollback_kind',['io_error','keyboard','system_exit'])
+def test_interrupted_publication_keeps_original_exception_and_backup_when_rollback_fails(cli,monkeypatch,capsys,rollback_kind):
+    interruption=KeyboardInterrupt('original publication cancellation')
+    rollback_error={'io_error':OSError('restore unavailable'),
+                    'keyboard':KeyboardInterrupt('second cancellation'),
+                    'system_exit':SystemExit(19)}[rollback_kind]
+    replace=os.replace
+    def fail(source,destination):
+        name=Path(source).name
+        if Path(destination)==cli.audit and name.startswith('.hotel-stage-'):raise interruption
+        if Path(destination)==cli.out and name.startswith('.hotel-backup-'):raise rollback_error
+        return replace(source,destination)
+    monkeypatch.setattr(output.os,'replace',fail)
+    with pytest.raises(KeyboardInterrupt) as error:cli.invoke()
+    assert error.value is interruption
+    assert error.value.publication_state=='partial_publication'
+    assert error.value.changed_paths==[str(cli.out)]
+    assert error.value.rollback_errors
+    assert any('partial_publication' in note for note in error.value.__notes__)
+    backup=Path(error.value.recovery_backups[0])
+    assert backup.read_bytes()==cli.old[cli.out]
+    assert cli.audit.read_bytes()==cli.old[cli.audit]
+    assert cli.rejected.read_bytes()==cli.old[cli.rejected]
+    assert cli.out.read_bytes()!=cli.old[cli.out]
+    assert 'replay_complete' not in capsys.readouterr().out
+
+
+def test_new_file_is_removed_when_interrupted_after_actual_replace(cli,monkeypatch):
+    cli.out.unlink();cli.old.pop(cli.out)
+    interruption=KeyboardInterrupt('new output interrupted')
+    replace=os.replace
+    def interrupt(source,destination):
+        result=replace(source,destination)
+        if Path(destination)==cli.out and Path(source).name.startswith('.hotel-stage-'):raise interruption
+        return result
+    monkeypatch.setattr(output.os,'replace',interrupt)
+    with pytest.raises(KeyboardInterrupt) as error:cli.invoke()
+    assert error.value is interruption
+    assert not cli.out.exists()
+    assert_old(cli)
+    assert not list(cli.root.glob('.hotel-*'))
+
+
+def test_interrupt_during_preparation_never_publishes_and_remains_keyboard_interrupt(cli,monkeypatch):
+    interruption=KeyboardInterrupt('serialization interrupted')
+    original=Path.write_text
+    def interrupt(path,*args,**kwargs):
+        if path.name.startswith('.hotel-stage-audit.jsonl-'):raise interruption
+        return original(path,*args,**kwargs)
+    monkeypatch.setattr(Path,'write_text',interrupt)
+    with pytest.raises(KeyboardInterrupt) as error:cli.invoke()
+    assert error.value is interruption and error.value.publication_state=='not_published'
+    assert_old(cli)
+    assert not list(cli.root.glob('.hotel-*'))
+
+
+def test_keyboard_interrupt_during_io_error_rollback_is_not_converted_to_exit_two(cli,monkeypatch):
+    interruption=KeyboardInterrupt('rollback cancelled')
+    original_failure=OSError('original audit replace failure')
+    replace=os.replace
+    def fail(source,destination):
+        name=Path(source).name
+        if Path(destination)==cli.audit and name.startswith('.hotel-stage-'):raise original_failure
+        if Path(destination)==cli.out and name.startswith('.hotel-backup-'):raise interruption
+        return replace(source,destination)
+    monkeypatch.setattr(output.os,'replace',fail)
+    with pytest.raises(KeyboardInterrupt) as error:cli.invoke()
+    assert error.value is interruption
+    assert error.value.__cause__ is original_failure
+    assert error.value.publication_state=='partial_publication'
+    assert Path(error.value.recovery_backups[0]).read_bytes()==cli.old[cli.out]

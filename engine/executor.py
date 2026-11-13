@@ -121,7 +121,16 @@ class MockExecutor:
                  encoded: tuple[str, str]) -> dict:
         validate_safety(decision, context)
         execution_utc = context.get("execution_utc", decision.timestamp_utc)
-        if instant(execution_utc) != instant(decision.timestamp_utc):
+        decision_time = instant(decision.timestamp_utc)
+        calendars = [*self._submitted_calendars.get(decision.event_id, []), context.get("calendar")]
+        # An omitted/old caller timestamp cannot rewind a clock already known
+        # by an originating calendar. Completed receipts return before this gate.
+        known_later_clock = any(
+            calendar is not None and calendar.current_time is not None
+            and instant(calendar.current_time) > decision_time
+            for calendar in calendars
+        )
+        if instant(execution_utc) != decision_time or known_later_clock:
             raise SafetyViolation("A deferred command must be replanned with fresh evidence at execution time")
         if decision.requires_human_approval and context.get("human_approval_granted") is not True:
             status, phase = "pending_human_approval", "approval_pending"

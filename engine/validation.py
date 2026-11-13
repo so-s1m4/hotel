@@ -493,8 +493,14 @@ def main():
     parser.add_argument("--audit", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
-    if args.out.resolve() in {args.decisions.resolve(), args.audit.resolve()} or args.out.resolve().is_relative_to(args.data_dir.resolve()):
-        parser.error("Validation report must not overwrite source inputs")
+    # Resolve checks alone miss hard links outside the source directory. Reject
+    # every existing source inode alias before reading inputs or writing reports.
+    from engine.output_artifacts import preflight_outputs
+    try:
+        preflight_outputs([args.out], args.data_dir,
+                          protected_inputs=[args.decisions, args.audit])
+    except (OSError, ValueError, RuntimeError) as exc:
+        parser.error(f"Validation report must not overwrite source inputs: {exc}")
     try:
         result = validate_outputs(args.data_dir, args.decisions, args.audit)
     except (OSError, ValueError, TypeError, KeyError) as exc:

@@ -267,6 +267,9 @@ class DecisionEngine:
             self._transaction = None
 
     def _process_event(self, event):
+        now = event.available_at_utc
+        self.calendar.current_time = now
+        self._outbox = []
         declared_room = event.entities.room_id
         if (event.event_type == "guest_request" and declared_room not in {None, "BUILDING"}
                 and declared_room not in {room["id"] for room in self.building["building"]["rooms"]}):
@@ -276,9 +279,6 @@ class DecisionEngine:
             self.rejections.append({"event_id": event.event_id,
                                     "reason": "Unknown candidate asset", "asset": declared_room})
             return []
-        now = event.available_at_utc
-        self.calendar.current_time = now
-        self._outbox = []
         self._observe_activity(event)
         self._revalidate_plans(event)
         if event.event_type == "work_order_created":
@@ -412,6 +412,8 @@ class DecisionEngine:
             if not stamp or instant(stamp) > instant(now):
                 continue
             kind = raw.get("type")
+            if not isinstance(kind, str):
+                continue  # Unknown operational payload cannot establish observed work.
             if kind in {"checkout", "checkout_early"} and raw.get("room_id"):
                 self._advance_occurrence(self.calendar.last_dirty_trigger, raw["room_id"], stamp)
             if kind in {"checkin", "checkin_early", "checkin_after_wait", "stay_in_progress"} and raw.get("room_id"):
