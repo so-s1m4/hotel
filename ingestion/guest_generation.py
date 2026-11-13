@@ -10,6 +10,11 @@ for compatible backends. Its details object permits only approximate_time (bool)
 and assistance_requested (nonempty exact substring or list of such substrings).
 Four closed object variants allow either, both or neither key without requiring
 null placeholder details or optional properties unsupported by strict providers.
+The contract profile preserves the original generation grammar. The opt-in
+extraction profile emits requested_time_utc=null and details={} explicitly:
+models extract labels and quotations; the host computes dates and validates
+semantics. Profile-specific schema hashes must be part of cache identity even
+in json_object mode, whose provider payload itself is identical across profiles.
 Importing this module performs no I/O and never changes the common contract.
 """
 from __future__ import annotations
@@ -26,7 +31,7 @@ __all__ = [
     'response_format', 'generation_schema_sha256', 'response_format_sha256',
 ]
 
-GENERATION_SCHEMA_VERSION = 'guest-generation-v1'
+GENERATION_SCHEMA_VERSION = 'guest-generation-v2'
 MAX_INTENTS = 32
 # Shape only: calendar validity, UTC semantics and date grounding are host checks.
 _UTC_Z_PATTERN = r'^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?Z$'
@@ -74,18 +79,30 @@ def _build_schema():
 _SCHEMA = _build_schema()
 
 
-def generation_schema() -> dict:
-    """Return an independent JSON-serializable generation envelope schema."""
-    return deepcopy(_SCHEMA)
+def _validate_profile(profile):
+    if not isinstance(profile, str) or profile not in {'contract','extraction'}:
+        raise ValueError('Generation profile must be contract or extraction')
 
 
-def response_format(mode: str = 'json_object') -> dict:
-    """Return provider response_format, preserving the historical default."""
+def generation_schema(profile: str = 'contract') -> dict:
+    """Return isolated constraints; the default preserves the original schema."""
+    _validate_profile(profile)
+    schema = deepcopy(_SCHEMA)
+    if profile == 'extraction':
+        properties = schema['$defs']['intent']['properties']
+        properties['requested_time_utc'] = {'type':'null'}
+        properties['details'] = _object({})
+    return schema
+
+
+def response_format(mode: str = 'json_object', profile: str = 'contract') -> dict:
+    """Return provider format; validate profile even for unconstrained JSON mode."""
+    _validate_profile(profile)
     if mode == 'json_object':
         return {'type':'json_object'}
     if mode == 'json_schema':
         return {'type':'json_schema','json_schema':{
-            'name':'guest_intents_v1','strict':True,'schema':generation_schema(),
+            'name':'guest_intents_v1','strict':True,'schema':generation_schema(profile),
         }}
     raise ValueError('Response format must be json_object or json_schema')
 
@@ -95,11 +112,11 @@ def _sha256(value) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def generation_schema_sha256() -> str:
+def generation_schema_sha256(profile: str = 'contract') -> str:
     """Hash exact generation constraints, independently of provider mode."""
-    return _sha256(generation_schema())
+    return _sha256(generation_schema(profile))
 
 
-def response_format_sha256(mode: str = 'json_object') -> str:
+def response_format_sha256(mode: str = 'json_object', profile: str = 'contract') -> str:
     """Hash the exact provider format, including its schema in opt-in mode."""
-    return _sha256(response_format(mode))
+    return _sha256(response_format(mode, profile))

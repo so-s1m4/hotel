@@ -78,9 +78,35 @@ constrained generation is not evidence that the model understood a request.
 A server may reject an unsupported strict schema; inspect transport/fallback
 paths instead of counting that as a successful structured prediction.
 
+`--generation-profile contract` is the default profile used by the original
+structured-format comparison. `--generation-profile extraction` is an optional
+architecture experiment: the model extracts intent and exact source quotations,
+while generated `requested_time_utc` must be null and `details` is the closed
+empty object. The unchanged host resolves justified dates/UTC, detects ambiguous
+alternatives and DST gaps/folds, and marks uncertainty. A generated null UTC is
+intentional in this profile; it does not make an uncertain request exact or bypass
+host checks. The frozen public contract and source-label fallback are unchanged.
+
+Profile and full profile-specific schema/response-format hashes enter the run
+identity, including when using JSON-object mode. `LLM_GENERATION_PROFILE` is set
+explicitly for each run and restored afterward. Use a new run ID to compare
+profiles; warm reuse across profiles is rejected. Both transport modes within a
+profile use the same generation prompt. A profile comparison changes the task,
+so it is distinct from comparing only the two transport constraints.
+
+Historical scoring is preserved: `raw.requested_time_utc_match` still compares the
+model's UTC with gold. An extraction-profile raw null therefore fails that check
+when gold has an exact date, even if the host correctly derives it afterward.
+Do not interpret the aggregate raw pass count as a fair model-quality comparison
+between profiles. Inspect intent and quotation checks separately, then use the
+final host result for end-to-end cohort acceptance. That small directed cohort
+still does not establish general accuracy. `raw.schema_valid` checks the frozen
+host contract with its defaults; it does not certify conformance to every
+required field in the generation schema.
+
 `--max-tokens 384` requests an explicit output cap (integer 1..16384). Omitting
 this option means no output cap is requested by this harness; a server may apply
-its own limit. The benchmark explicitly sets `LLM_RESPONSE_FORMAT` and overrides
+its own limit. The benchmark explicitly sets `LLM_RESPONSE_FORMAT`, `LLM_GENERATION_PROFILE` and overrides
 inherited `LLM_MAX_TOKENS`, restoring the caller's environment afterward. The
 report records `max_tokens=null` when no cap was requested. These flags describe
 request settings, not measurements of actual output tokens.
@@ -166,7 +192,7 @@ python -m scripts.benchmark_guest_parser "${benchmark_args[@]}" \
 
 Warm mode requires matching candidate/run identity, revision, inputs, worker
 count, endpoint/model, parser/prompt/schema hashes, timeout, response-format mode,
-full generation-schema and response-format hashes, output token cap and declared
+generation profile, full generation-schema and response-format hashes, output token cap and declared
 runtime metadata hash. Transport or
 validation fallbacks are not cached. Valid normalized extractions are cached even
 when a gold check fails, so a warm run can retry uncached cases but does not rerun
@@ -175,9 +201,10 @@ Use a different run ID for a fresh worker-count comparison. Six client workers
 are not a claim of six parallel server inference slots. Record the independently
 configured server concurrency and measure its memory use separately.
 
-Parser `1.1.0` changes the generation prompt and cache identity from `1.0.4`; old
-parser or teacher caches will not supply warm hits. Both response-format arms use
-the same full envelope prompt; the transport constraint is their explicit difference. Do not use a full replay or slice its event iterator
+Parser `1.2.0` adds profile-specific prompt and cache identity after `1.1.0`; old
+parser or teacher caches will not supply warm hits. Within each profile, both
+response-format arms use the same full envelope prompt; the transport constraint
+is their explicit difference. Do not use a full replay or slice its event iterator
 to bound model work: event construction is eager. The benchmark's input selection
 occurs before parsing. The production public batch helper is also sequential,
 so this harness creates its own explicit worker pool.

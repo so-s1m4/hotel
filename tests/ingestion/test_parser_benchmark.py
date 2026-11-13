@@ -538,8 +538,88 @@ def test_full_generation_schema_drift_invalidates_even_json_object_warm_identity
     # The JSON-object request itself stays identical; the envelope's nested
     # generation contract must still isolate its old caches from a new run.
     previous_hash = cold['manifest']['generation_schema_sha256']
-    monkeypatch.setattr(generation, 'generation_schema_sha256', lambda: '0' * 64 if previous_hash != '0' * 64 else '1' * 64)
+    monkeypatch.setattr(generation, 'generation_schema_sha256', lambda profile='contract': '0' * 64 if previous_hash != '0' * 64 else '1' * 64)
     with pytest.raises(ValueError, match='Warm cache identity'):
         benchmark.run_benchmark(replace(config, warm=True, out=tmp_path/'schema-drift.json'), parser_module=parser)
     assert transport.call_count == 1
     assert not (tmp_path/'schema-drift.json').exists()
+
+
+@pytest.mark.parametrize('mode', ['json_object', 'json_schema'])
+def test_generation_profile_is_pinned_forwarded_and_never_reuses_other_profile_cache(benchmark, parser, cases, tmp_path, monkeypatch, mode):
+    from ingestion.guest_generation import generation_schema_sha256, response_format
+    path = write_cases(tmp_path/'cases.jsonl', cases[:1])
+    seen = []
+    monkeypatch.setenv('LLM_GENERATION_PROFILE', 'extraction')
+    environment = dict(os.environ)
+
+    def transport(messages, settings):
+        seen.append(dict(settings))
+        return reply(guest_record(messages))
+
+    monkeypatch.setattr(parser, '_call_llm', transport)
+    config = config_for(benchmark, tmp_path, path, limit=1, execute=True, response_format_mode=mode)
+    contract = benchmark.run_benchmark(config, parser_module=parser)
+    assert seen[0]['generation_profile'] == 'contract'
+    assert contract['manifest']['generation_profile'] == 'contract'
+    assert dict(os.environ) == environment
+    with pytest.raises(ValueError, match='Warm cache identity'):
+        benchmark.run_benchmark(replace(config, generation_profile='extraction', warm=True,
+                                       out=tmp_path/'profile-collision.json'), parser_module=parser)
+    assert len(seen) == 1
+    assert not (tmp_path/'profile-collision.json').exists()
+    extraction_config = replace(config, generation_profile='extraction', run_id='extraction-fresh',
+                                out=tmp_path/'extraction.json')
+    extraction = benchmark.run_benchmark(extraction_config, parser_module=parser)
+    manifest = extraction['manifest']
+    assert seen[1]['generation_profile'] == manifest['generation_profile'] == 'extraction'
+    assert manifest['generation_schema_sha256'] == generation_schema_sha256('extraction')
+    assert manifest['prompt_sha256'] == hashlib.sha256(parser._system_prompt('extraction').encode()).hexdigest()
+    assert manifest['prompt_sha256'] != contract['manifest']['prompt_sha256']
+    assert manifest['generation_schema_sha256'] != contract['manifest']['generation_schema_sha256']
+    assert manifest['response_format'] == response_format(mode, 'extraction')
+    warm = benchmark.run_benchmark(replace(extraction_config, warm=True, out=tmp_path/'extraction-warm.json'), parser_module=parser)
+    assert warm['summary']['cache_hits'] == 1 and len(seen) == 2
+    assert dict(os.environ) == environment
+
+
+@pytest.mark.parametrize('profile', ['minimal', '', None, [], True])
+def test_invalid_generation_profile_fails_before_cache_and_model_work(benchmark, parser, cases, tmp_path, monkeypatch, profile):
+    path = write_cases(tmp_path/'cases.jsonl', cases[:1])
+    parse = Mock(side_effect=AssertionError('Invalid profile must not parse'))
+    monkeypatch.setattr(parser, 'parse_request_full', parse)
+    with pytest.raises(ValueError, match='Generation profile'):
+        benchmark.run_benchmark(config_for(benchmark, tmp_path, path, generation_profile=profile, execute=True), parser_module=parser)
+    parse.assert_not_called()
+    assert not (tmp_path/'report.json').exists()
+    assert not (tmp_path/'cache').exists()
+
+
+def test_extraction_profile_preserves_historical_raw_utc_metric_and_separate_host_derivation(benchmark, parser, cases, tmp_path, monkeypatch):
+    case = copy.deepcopy(cases[0])
+    case['record'].update(text='Can I arrive tomorrow at 13:00?', request_type='early_checkin')
+    case['gold'].update(intents=['early_checkin'], requested_time_utc='2026-01-07T12:00:00Z')
+    path = write_cases(tmp_path/'cases.jsonl', [case])
+    raw = {'intents': [{'intent': 'early_checkin', 'requested_time_utc': None,
+                        'requested_time_text': 'tomorrow at 13:00', 'evidence_quote': 'tomorrow at 13:00',
+                        'details': {}, 'needs_review': False}]}
+    monkeypatch.setattr(parser, '_call_llm', lambda messages, settings: json.dumps(raw))
+    report = benchmark.run_benchmark(config_for(benchmark, tmp_path, path, limit=1, execute=True,
+                                     generation_profile='extraction'), parser_module=parser)
+    result = report['results'][0]
+    assert result['checks']['raw']['requested_time_utc_match'] is False
+    assert report['summary']['raw_gold_pass_count'] == 0
+    assert result['normalized']['intents'][0]['requested_time_utc'] == case['gold']['requested_time_utc']
+    assert report['summary']['host_gold_pass_count'] == 1
+
+
+def test_cli_accepts_extraction_generation_profile_in_plan_only(benchmark, cases, tmp_path):
+    path = write_cases(tmp_path/'cases.jsonl', cases[:1])
+    out = tmp_path/'plan.json'
+    assert benchmark.main(['--input', str(path), '--limit', '1', '--candidate', 'local',
+        '--revision', REVISION, '--run-id', 'plan', '--base-url', 'http://127.0.0.1:11434/v1',
+        '--model', 'synthetic-model', '--cache-root', str(tmp_path/'cache'), '--out', str(out),
+        '--workers', '1', '--generation-profile', 'extraction']) == 0
+    report = json.loads(out.read_text())
+    assert report['manifest']['generation_profile'] == 'extraction'
+    assert report['status'] == 'planned' and report['summary']['transport_calls'] == 0

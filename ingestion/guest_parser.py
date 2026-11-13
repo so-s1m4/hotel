@@ -34,7 +34,7 @@ from ingestion.llm_transport import open_llm as _open_llm, origin
 __all__ = ["parse_request", "parse_request_full", "parse_requests_batch"]
 
 LOGGER = logging.getLogger(__name__)
-PARSER_VERSION = "1.1.1"  # source clock boundaries/alternatives and constrained transport
+PARSER_VERSION = "1.2.0"  # optional extraction-only generation; host retains date authority
 PROMPT_VERSION = "guest-semantics-v2"
 MAX_RESPONSE_BYTES = 2_000_000
 MAX_INTENTS = 32
@@ -72,6 +72,20 @@ in details. No confidence scores. If the source request_type differs from your
 interpretation keep your evidenced interpretation; the caller retains the
 source label separately and marks the disagreement for review.
 """
+
+EXTRACTION_ONLY_PROMPT = """\nGeneration profile: extraction only.
+Set requested_time_utc=null and details={} in every generated intent. The caller,
+not the model, computes UTC from grounded date/clock phrases and known context.
+This required null does not itself mean the guest's request is uncertain.
+requested_time_text must quote the COMPLETE date and clock phrase when present;
+never replace that phrase with a calculated timestamp or quote only its date.
+Preserve needs_review=true for genuine semantic ambiguity or uncertainty. All
+other extraction, evidence, untrusted-text and uncertainty rules still apply.
+"""
+
+
+def _system_prompt(profile: str = "contract") -> str:
+    return SYSTEM_PROMPT + (EXTRACTION_ONLY_PROMPT if profile == "extraction" else "")
 
 
 def _canonical(value: Any) -> str:
@@ -137,13 +151,15 @@ def _config() -> dict[str, Any]:
     except (ValueError, TypeError):
         timeout = 15.0
     format_mode = os.environ.get("LLM_RESPONSE_FORMAT", "json_object").strip() or "json_object"
-    response_format(format_mode)  # Fail closed on unsupported configuration.
+    profile = os.environ.get("LLM_GENERATION_PROFILE", "contract").strip() or "contract"
+    response_format(format_mode, profile)  # Fail closed on unsupported configuration.
     raw_cap = os.environ.get("LLM_MAX_TOKENS", "").strip()
     max_tokens = int(raw_cap) if raw_cap else None
     if max_tokens is not None and not 1 <= max_tokens <= 16384:
         raise ValueError("LLM_MAX_TOKENS must be between 1 and 16384")
     return {"api_key": key, "base_url": base.rstrip("/"), "model": model,
             "response_format_mode": format_mode, "max_tokens": max_tokens,
+            "generation_profile": profile,
             "timeout": timeout,
             "offline": os.environ.get("GUEST_PARSER_OFFLINE", "").casefold() in {"1", "true", "yes", "on"}}
 
@@ -209,7 +225,8 @@ def _call_llm(messages: list[dict], config: dict) -> str:
     if not endpoint.endswith("/chat/completions"):
         endpoint += "/chat/completions"
     payload = {"model": config["model"], "messages": messages, "temperature": 0,
-               "response_format": response_format(config.get("response_format_mode", "json_object"))}
+               "response_format": response_format(config.get("response_format_mode", "json_object"),
+                                                  config.get("generation_profile", "contract"))}
     if config.get("max_tokens") is not None:
         payload["max_tokens"] = config["max_tokens"]
     req = urllib_request.Request(
@@ -640,10 +657,12 @@ def _validated(raw: list[dict], record: Mapping[str, Any], safe: Mapping[str, An
 def _cache_path(record: Mapping[str, Any], safe: Mapping[str, Any], config: Mapping[str, Any]) -> Path:
     material = {"source": record, "context": safe, "schema_version": SCHEMA_VERSION,
                 "schema": GuestIntentV1.model_json_schema(), "parser_version": PARSER_VERSION,
-                "prompt_version": PROMPT_VERSION, "prompt": SYSTEM_PROMPT,
+                "prompt_version": PROMPT_VERSION, "prompt": _system_prompt(config.get("generation_profile", "contract")),
                 "model": config["model"], "base_url": config["base_url"],
-                "generation_schema": generation_schema(),
-                "response_format": response_format(config.get("response_format_mode", "json_object")),
+                "generation_profile": config.get("generation_profile", "contract"),
+                "generation_schema": generation_schema(config.get("generation_profile", "contract")),
+                "response_format": response_format(config.get("response_format_mode", "json_object"),
+                                                   config.get("generation_profile", "contract")),
                 "max_tokens": config.get("max_tokens")}
     key = hashlib.sha256(_canonical(material).encode("utf-8")).hexdigest()
     return Path(os.environ.get("GUEST_PARSER_CACHE_DIR", ".cache/guest_parser")) / (key + ".json")
@@ -725,7 +744,8 @@ def parse_request_full(record: dict, context: dict | None = None) -> tuple[list[
         if not isinstance(text, str) or not text.strip():
             return _fallback(source, "fallback", "missing_text", config["model"])
         messages = [
-            {"role": "system", "content": SYSTEM_PROMPT + "\nSchema: " + _canonical(generation_schema())},
+            {"role": "system", "content": _system_prompt(config["generation_profile"]) + "\nSchema: "
+                                         + _canonical(generation_schema(config["generation_profile"]))},
             {"role": "user", "content": _canonical({"guest_record": dict(source), "known_context": safe})},
         ]
         raw = _decode(_call_llm(messages, config))

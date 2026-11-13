@@ -98,6 +98,27 @@ def test_default_transport_keeps_json_object_no_output_cap_and_explicit_timeout(
     assert responses[0].read_limits==[parser.MAX_RESPONSE_BYTES+1]
 
 
+def test_extraction_profile_leaves_utc_to_host_and_cannot_reuse_contract_cache(parser,monkeypatch):
+    record={**RECORD,'request_type':'early_checkin','text':'May I check in tomorrow at 13:00?'}
+    reply={'intents':[{'intent':'early_checkin','requested_time_utc':None,
+        'requested_time_text':'tomorrow at 13:00','evidence_quote':record['text'],
+        'details':{},'needs_review':False}]}
+    calls,_=install_transport(parser,monkeypatch,envelope(json.dumps(reply)))
+    contract,meta=parser.parse_request_full(record,CONTEXT)
+    assert meta.method=='llm' and contract[0]['requested_time_utc']=='2026-01-07T12:00:00Z'
+    monkeypatch.setenv('LLM_GENERATION_PROFILE','extraction')
+    monkeypatch.setenv('LLM_RESPONSE_FORMAT','json_schema')
+    result,meta=parser.parse_request_full(record,CONTEXT)
+    assert len(calls)==2 and meta.method=='llm' and not meta.needs_review
+    assert result==contract
+    schema=calls[-1]['payload']['response_format']['json_schema']['schema']['$defs']['intent']['properties']
+    assert schema['requested_time_utc']=={'type':'null'}
+    assert schema['details']=={'type':'object','properties':{},'required':[],'additionalProperties':False}
+    assert 'Generation profile: extraction only.' in calls[-1]['payload']['messages'][0]['content']
+    parser.parse_request_full(record,CONTEXT)
+    assert len(calls)==2  # the new profile's own valid cache is reused
+
+
 def test_schema_generation_is_explicit_opt_in_and_preserves_validated_host_contract(parser,monkeypatch):
     monkeypatch.setenv('LLM_RESPONSE_FORMAT','json_schema')
     monkeypatch.setenv('LLM_MAX_TOKENS','512')

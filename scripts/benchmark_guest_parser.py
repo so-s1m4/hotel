@@ -55,6 +55,7 @@ class BenchmarkConfig:
     warm: bool = False
     timeout_seconds: float = 15.0
     response_format_mode: str = "json_object"
+    generation_profile: str = "contract"
     max_tokens: int | None = None
     runtime_metadata: dict | None = None
 
@@ -154,6 +155,8 @@ def _validate_config(config: BenchmarkConfig) -> None:
         raise ValueError("Output cannot replace input")
     if not isinstance(config.response_format_mode, str) or config.response_format_mode not in {"json_object", "json_schema"}:
         raise ValueError("Response format mode must be json_object or json_schema")
+    if not isinstance(config.generation_profile, str) or config.generation_profile not in {"contract", "extraction"}:
+        raise ValueError("Generation profile must be contract or extraction")
     if config.max_tokens is not None and (type(config.max_tokens) is not int or not 1 <= config.max_tokens <= 16384):
         raise ValueError("Max tokens must be an integer between 1 and 16384 or null")
     _runtime_metadata(config.runtime_metadata)
@@ -365,19 +368,21 @@ def run_benchmark(config: BenchmarkConfig, *, parser_module: Any = None) -> dict
         raise ValueError("Report must be outside the managed cache directory")
     secrets = _secrets(config.base_url)
     from ingestion.guest_generation import response_format, generation_schema_sha256, response_format_sha256
-    generation_format = response_format(config.response_format_mode)
+    generation_format = response_format(config.response_format_mode, config.generation_profile)
     declared_runtime = _runtime_metadata(config.runtime_metadata)
+    profile_prompt = parser._system_prompt(config.generation_profile) if hasattr(parser, "_system_prompt") else parser.SYSTEM_PROMPT
     identity = {
         "candidate": config.candidate, "revision": config.revision, "run_id": config.run_id,
         "workers": config.workers, "model": config.model, "endpoint_sha256": _digest(config.base_url.rstrip("/")),
         "input_sha256": _digest(Path(config.input_path).read_bytes()), "selected_sha256": _digest(_canonical(selected)),
         "parser_version": parser.PARSER_VERSION, "parser_sha256": _digest(Path(parser.__file__).read_bytes()),
-        "prompt_sha256": _digest(parser.SYSTEM_PROMPT), "schema_version": SCHEMA_VERSION,
+        "prompt_sha256": _digest(profile_prompt), "schema_version": SCHEMA_VERSION,
         "schema_sha256": _digest(_canonical(GuestIntentV1.model_json_schema())),
         "timeout_seconds": config.timeout_seconds,
         "response_format_mode": config.response_format_mode,
-        "generation_schema_sha256": generation_schema_sha256(),
-        "response_format_sha256": response_format_sha256(config.response_format_mode),
+        "generation_profile": config.generation_profile,
+        "generation_schema_sha256": generation_schema_sha256(config.generation_profile),
+        "response_format_sha256": response_format_sha256(config.response_format_mode, config.generation_profile),
         "response_format": generation_format,
         "max_tokens": config.max_tokens,
         "runtime_metadata_sha256": _digest(_canonical(declared_runtime)),
@@ -429,6 +434,7 @@ def run_benchmark(config: BenchmarkConfig, *, parser_module: Any = None) -> dict
                                "LLM_MODEL": config.model, "LLM_TIMEOUT_SECONDS": str(config.timeout_seconds),
                                "GUEST_PARSER_CACHE_DIR": str(cache_dir),
                                "LLM_RESPONSE_FORMAT": config.response_format_mode,
+                               "LLM_GENERATION_PROFILE": config.generation_profile,
                                "LLM_MAX_TOKENS": "" if config.max_tokens is None else str(config.max_tokens)}
                 started = time.perf_counter()
                 with patch.dict(os.environ, environment):
@@ -497,6 +503,7 @@ def main(argv: list[str] | None = None) -> int:
     cli.add_argument("--workers", required=True, choices=(1, 6), type=int)
     cli.add_argument("--timeout-seconds", type=float, default=15.0)
     cli.add_argument("--response-format-mode", choices=("json_object", "json_schema"), default="json_object")
+    cli.add_argument("--generation-profile", choices=("contract", "extraction"), default="contract")
     cli.add_argument("--max-tokens", type=int, help="explicit output cap (1..16384); absent means no requested cap")
     cli.add_argument("--runtime-metadata", type=Path, help="JSON file of operator-declared runtime settings, not measurements")
     cli.add_argument("--execute", action="store_true", help="permit configured parser transport calls")

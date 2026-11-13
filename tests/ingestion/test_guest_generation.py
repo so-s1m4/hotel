@@ -133,3 +133,70 @@ def test_generation_schema_does_not_tighten_the_frozen_host_fallback_contract():
     fallback=GuestIntentV1(intent='unknown',evidence_quote=None,details={},needs_review=True)
     assert fallback.evidence_quote is None
     assert GuestIntentV1.model_fields['evidence_quote'].default is None
+
+
+def test_default_contract_profile_preserves_exact_1647ebb_schema_and_format_hashes():
+    assert generation_schema()==generation_schema('contract')
+    assert generation_schema_sha256()==generation_schema_sha256('contract')=='271937dd7e1736c0e63260d63163c2687e1fb342e7e9fff3e5e37d7b32f1c5f2'
+    assert response_format_sha256('json_schema','contract')=='bbc089482ac6dcd5a1ad23d51ca74abcf9461ba7d3564875f531dc2d27a41823'
+    assert response_format_sha256()=='376bde7986cc2f8fd182f04e745c607933760bea7c306ea6e8e992b7f70be25a'
+
+
+def test_extraction_profile_changes_only_computed_utc_and_semantic_details():
+    contract=generation_schema('contract')
+    extraction=generation_schema('extraction')
+    properties=extraction['$defs']['intent']['properties']
+    assert properties['requested_time_utc']=={'type':'null'}
+    assert properties['details']=={'type':'object','properties':{},'required':[],'additionalProperties':False}
+    required=extraction['$defs']['intent']['required']
+    assert {'requested_time_utc','details'} <= set(required)
+    expected=generation_schema('contract')
+    expected['$defs']['intent']['properties']['requested_time_utc']={'type':'null'}
+    expected['$defs']['intent']['properties']['details']={'type':'object','properties':{},'required':[],'additionalProperties':False}
+    assert extraction==expected
+    assert set(properties)==set(GuestIntentV1.model_fields)
+    assert extraction['properties']['intents']==contract['properties']['intents']
+    assert response_format('json_schema','extraction')['json_schema']['schema']==extraction
+
+
+@pytest.mark.parametrize('profile',[None,'','CONTRACT','other',False,[],{}])
+def test_invalid_profile_fails_in_every_helper_even_json_object_mode(profile):
+    with pytest.raises(ValueError):generation_schema(profile)
+    with pytest.raises(ValueError):generation_schema_sha256(profile)
+    for mode in ['json_object','json_schema']:
+        with pytest.raises(ValueError):response_format(mode,profile)
+        with pytest.raises(ValueError):response_format_sha256(mode,profile)
+
+
+def test_profile_schema_identity_distinguishes_identical_json_object_wire_format():
+    assert response_format('json_object','contract')==response_format('json_object','extraction')
+    assert response_format_sha256('json_object','contract')==response_format_sha256('json_object','extraction')
+    assert generation_schema_sha256('contract')!=generation_schema_sha256('extraction')
+    assert response_format_sha256('json_schema','contract')!=response_format_sha256('json_schema','extraction')
+
+
+def test_extraction_mutations_cannot_change_contract_or_another_profile_call():
+    contract_hash=generation_schema_sha256('contract')
+    extraction_hash=generation_schema_sha256('extraction')
+    extraction=generation_schema('extraction')
+    extraction['$defs']['intent']['properties']['details']['additionalProperties']=True
+    extraction['$defs']['intent']['properties']['requested_time_utc']['type']='string'
+    response=response_format('json_schema','extraction')
+    response['json_schema']['schema']['$defs']['intent']['required'].remove('details')
+    assert generation_schema_sha256('contract')==contract_hash
+    assert generation_schema_sha256('extraction')==extraction_hash
+
+
+def test_profile_helpers_do_not_open_files_or_connections(monkeypatch):
+    import builtins
+    import socket
+    def forbidden(*args,**kwargs):raise AssertionError('Generation helpers must not perform I/O')
+    monkeypatch.setattr(builtins,'open',forbidden)
+    monkeypatch.setattr(socket,'create_connection',forbidden)
+    monkeypatch.setattr(socket.socket,'connect',forbidden)
+    for profile in ['contract','extraction']:
+        generation_schema(profile)
+        generation_schema_sha256(profile)
+        for mode in ['json_object','json_schema']:
+            response_format(mode,profile)
+            response_format_sha256(mode,profile)
