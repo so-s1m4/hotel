@@ -89,3 +89,21 @@ def test_quality_missing_slots_ignore_rows_outside_the_grid(tmp_path):
     tel = build_report(d)["room_telemetry"]
     assert tel["expected_rows"] == 4 and tel["missing_rows"] == 2
     assert tel["rows_outside_manifest_grid"] == 2
+
+
+def test_quality_undeclared_room_does_not_inflate_missing(tmp_path):
+    d = tmp_path / "undeclared"
+    d.mkdir()
+    (d / "manifest.json").write_text(json.dumps({
+        "start_utc": "2026-01-05T00:00:00Z", "end_utc": "2026-01-05T01:00:00Z",
+        "interval_seconds": 900}))
+    (d / "building.json").write_text(json.dumps({"building": {"rooms": [{"id": "R101"}]}}))
+    (d / "room_telemetry.csv").write_text(
+        "timestamp_utc,room_id,temperature_c,humidity_pct,co2_ppm\n" + "".join(
+            f"2026-01-05T00:{m:02d}:00Z,R101,20.0,40,500\n" for m in (0, 15, 30, 45))
+        + "2026-01-05T00:00:00Z,R999,20.0,40,500\n")
+    (d / "room_water.csv").write_text("timestamp_utc,room_id,meter_total_l\n")
+    (d / "water_main.csv").write_text("timestamp_utc,meter_total_l\n")
+    tel = build_report(d)["room_telemetry"]
+    assert tel["expected_rows"] == 4 and tel["missing_rows"] == 0
+    assert tel["rooms_not_in_building_json"] == ["R999"]

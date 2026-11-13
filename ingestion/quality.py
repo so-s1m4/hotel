@@ -87,7 +87,8 @@ def telemetry_quality(ds: Dataset) -> dict[str, Any]:
                 if value is not None and not low <= value <= high:
                     implausible.append({"room_id": room, "timestamp_utc": row["timestamp_utc"],
                                         "column": col, "value": value})
-        slots_missing += present.count(False)
+        if not ds.room_ids or room in ds.room_ids:  # undeclared rooms are reported apart
+            slots_missing += present.count(False)
         for start, length in _runs([not p for p in present]):
             if length >= GAP_MIN_INTERVALS:
                 gaps.append({"room_id": room, "kind": "row_missing", "from_utc": grid[start],
