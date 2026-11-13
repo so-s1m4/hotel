@@ -1,7 +1,9 @@
 """Stateful S01–S05 and cross-domain orchestration over the frozen ReplayDataGateway."""
-from copy import deepcopy
+from copy import deepcopy, copy
+from collections import deque
 import json
 from hashlib import sha256
+from itertools import groupby
 
 from common.contracts.api import ReplayDataGateway
 from common.contracts.schemas import NormalizedEventV1, DecisionRecordV2
@@ -20,6 +22,182 @@ from engine.notifications import NotificationLedger
 from engine.safety import SafetyViolation, asset_ids, validate_safety
 
 
+_MISSING = object()
+
+
+class _ShallowListCheckpoint:
+    def __init__(self, value):
+        self.original = value
+        self.items = list(value)
+
+
+class _UndoDict(dict):
+    """Record touched keys, never copy a growing history for each input event."""
+    def __init__(self, values=(), *, mutable_values=False):
+        super().__init__(values)
+        self.mutable_values = mutable_values
+        self.shallow_list_values = False
+        self.undo = None
+
+    def __deepcopy__(self, memo):
+        return deepcopy(dict(self), memo)
+
+    def touch(self, key):
+        if self.undo is not None and key not in self.undo:
+            value = dict.get(self, key, _MISSING)
+            if self.shallow_list_values and isinstance(value, list):
+                # Original-calendar metadata borrows live calendars; only the
+                # list membership is transactional, never calendar identity.
+                self.undo[key] = _ShallowListCheckpoint(value)
+            else:
+                self.undo[key] = deepcopy(value) if self.mutable_values and value is not _MISSING else value
+
+    def __getitem__(self, key):
+        if self.mutable_values or self.shallow_list_values:
+            self.touch(key)
+        return dict.__getitem__(self, key)
+
+    def get(self, key, default=None):
+        if self.mutable_values or self.shallow_list_values:
+            self.touch(key)
+        return dict.get(self, key, default)
+
+    def __setitem__(self, key, value):
+        self.touch(key)
+        dict.__setitem__(self, key, value)
+
+    def setdefault(self, key, default=None):
+        self.touch(key)
+        return dict.setdefault(self, key, default)
+
+    def pop(self, key, *default):
+        self.touch(key)
+        return dict.pop(self, key, *default)
+
+    def clear(self):
+        for key in self:
+            self.touch(key)
+        dict.clear(self)
+
+    def update(self, *args, **kwargs):
+        for key, value in dict(*args, **kwargs).items():
+            self[key] = value
+
+    def finish(self, rollback=False):
+        changes, self.undo = self.undo, None
+        if rollback:
+            for key, old in changes.items():
+                if old is _MISSING:
+                    dict.pop(self, key, None)
+                else:
+                    if isinstance(old, _ShallowListCheckpoint):
+                        old.original[:] = old.items
+                        old = old.original
+                    dict.__setitem__(self, key, old)
+
+
+class _UndoAddSet(set):
+    """The observed/query/cancelled ID ledgers only ever add identities."""
+    def add(self, value):
+        if self.added is not None and value not in self:
+            self.added.add(value)
+        set.add(self, value)
+
+    added = None
+
+
+def _runtime_copy(value):
+    # Detector history deques contain immutable tuples or frozen intervals.
+    # Copy their pointers once, not every timestamp and evidence string.
+    if isinstance(value, deque):
+        return value.copy()
+    if isinstance(value, dict):
+        result = copy(value)
+        for key, item in value.items():
+            result[key] = _runtime_copy(item)
+        return result
+    if isinstance(value, list):
+        return [_runtime_copy(item) for item in value]
+    if isinstance(value, set):
+        return value.copy()
+    return value
+
+
+class _EventTransaction:
+    """Rollback engine-owned mock state; gateway reads remain external."""
+    def __init__(self, engine):
+        self.engine = engine
+        self.maps, self.sets, self.snapshots = [], [], []
+        self.logs = [(value, len(value)) for value in
+                     (engine.executor.audit, engine.rejections, engine.calendar.cancellations, engine.work_orders)]
+        self.touched = {}
+        self.scalars = {key: getattr(engine, key) for key in
+                        ("_observed_hydrated", "_cancellation_cursor", "_outbox")}
+        self.calendar_scalars = {key: value for key, value in vars(engine.calendar).items()
+                                 if not isinstance(value, (dict, set, list))}
+        self.notification_suppressed = engine.notifications.suppressed
+        for owner, keys, mutable in (
+            (engine, ("_proposals", "_decisions"), False),
+            (engine.executor, tuple(key for key in ("_submitted", "_completed", "_submitted_calendars")
+                                    if hasattr(engine.executor, key)), False),
+            (engine.episodes, ("_generations",), False),
+            (engine.episodes, ("active",), True),
+            (engine.notifications, ("history",), False),
+            (engine, ("_observed_completions",), False),
+            (engine.calendar, tuple(key for key, value in vars(engine.calendar).items() if isinstance(value, dict)), True),
+        ):
+            for key in keys:
+                value = getattr(owner, key)
+                if not isinstance(value, _UndoDict):
+                    value = _UndoDict(value, mutable_values=mutable)
+                    setattr(owner, key, value)
+                if owner is engine.executor and key == "_submitted_calendars":
+                    value.shallow_list_values = True
+                value.undo = {}
+                self.maps.append(value)
+        for owner, key in ((engine, "_observed_event_ids"), (engine.calendar, "_cancelled_ids"),
+                           (engine.notifications, "explicit_queries")):
+            value = getattr(owner, key)
+            if not isinstance(value, _UndoAddSet):
+                value = _UndoAddSet(value)
+                setattr(owner, key, value)
+            value.added = set()
+            self.sets.append(value)
+
+    def detector(self, detector):
+        self.snapshots.append((detector, {key: _runtime_copy(value) for key, value in vars(detector).items()
+                                          if key not in {"config", "weak"}}))
+        if hasattr(detector, "weak"):
+            self.detector(detector.weak)
+
+    def touch(self, value):
+        self.touched.setdefault(id(value), (value, deepcopy(value)))
+
+    def finish(self, rollback=False):
+        for value in self.maps:
+            value.finish(rollback)
+        for value in self.sets:
+            if rollback:
+                value.difference_update(value.added)
+            value.added = None
+        if rollback:
+            for owner, snapshot in reversed(self.snapshots):
+                for key in set(vars(owner))-set(snapshot)-{"config", "weak"}:
+                    delattr(owner, key)
+                for key, value in snapshot.items():
+                    setattr(owner, key, value)
+            for value, size in self.logs:
+                del value[size:]
+            for value, old in self.touched.values():
+                value.clear()
+                value.update(old)
+            for key, value in self.scalars.items():
+                setattr(self.engine, key, value)
+            for key, value in self.calendar_scalars.items():
+                setattr(self.engine.calendar, key, value)
+            self.engine.notifications.suppressed = self.notification_suppressed
+
+
 class DecisionEngine:
     def __init__(self, repo: ReplayDataGateway, building: dict, config: EngineConfig | None = None):
         self.repo = repo
@@ -30,6 +208,7 @@ class DecisionEngine:
         self.notifications = NotificationLedger()
         self._observed_event_ids = set()
         self._observed_hydrated = False
+        self._observed_completions = {}
         self._cancellation_cursor = 0
         self._outbox = []
         self.calendar.last_human_completion = {}
@@ -61,20 +240,45 @@ class DecisionEngine:
             raise ValueError("Conflicting content for duplicate input event ID")
         if event.event_id in self._seen_ids:
             return []
-        order = (instant(event.available_at_utc), event.event_id)
+        order = instant(event.available_at_utc)
         if self._last_order is not None and order < self._last_order:
-            raise ValueError("Event stream must be sorted by (available_at_utc, event_id)")
+            raise ValueError("Event stream must be sorted by available_at_utc")
         if instant(event.timestamp_utc) > instant(event.available_at_utc):
             raise ValueError("Future event occurrence cannot be used as observed evidence")
         if event.source.timestamp_utc and instant(event.source.timestamp_utc) > instant(event.available_at_utc):
             raise ValueError("Future source timestamp")
-        self._last_order = order
-        self._seen_ids.add(event.event_id)
-        self._event_fingerprints[event.event_id] = fingerprint
-        self.event_count += 1
+        transaction = _EventTransaction(self)
+        self._transaction = transaction
+        # Turnaround can be changed by cancellation before its detector runs.
+        transaction.detector(self.turnaround)
+        try:
+            records = self._process_event(event)
+        except BaseException:
+            transaction.finish(rollback=True)
+            raise
+        else:
+            transaction.finish()
+            self._last_order = order
+            self._seen_ids.add(event.event_id)
+            self._event_fingerprints[event.event_id] = fingerprint
+            self.event_count += 1
+            return records
+        finally:
+            self._transaction = None
+
+    def _process_event(self, event):
         now = event.available_at_utc
         self.calendar.current_time = now
         self._outbox = []
+        declared_room = event.entities.room_id
+        if (event.event_type == "guest_request" and declared_room not in {None, "BUILDING"}
+                and declared_room not in {room["id"] for room in self.building["building"]["rooms"]}):
+            # Missing identity can be clarified or resolved from known booking
+            # facts. An explicit undeclared room is contradictory input, and
+            # must not be silently retargeted into an actionable room workflow.
+            self.rejections.append({"event_id": event.event_id,
+                                    "reason": "Unknown candidate asset", "asset": declared_room})
+            return []
         self._observe_activity(event)
         self._revalidate_plans(event)
         if event.event_type == "work_order_created":
@@ -84,22 +288,40 @@ class DecisionEngine:
         if event.event_type == "operational_event" and event.payload.get("type") == "work_order_completed":
             for order in self.work_orders:
                 if order.get("work_order_id") == event.payload.get("work_order_id", event.source.record_id):
+                    self._transaction.touch(order)
                     order["observed_completed_utc"] = now
+                    # Completion narratives become usable only with this
+                    # observed event, never from the original creation view.
+                    for field in ("summary", "scheduled_utc", "asset_id", "assigned_to"):
+                        if event.payload.get(field) is not None:
+                            order[field] = deepcopy(event.payload[field])
         # Evaluate lazily: later planners see earlier accepted resource/capacity reservations.
         detectors = [lambda: self.turnaround.detect(event, self.repo, self.calendar, self.building),
                      lambda: self.water.detect(event, self.repo, self.building, self.work_orders),
                      lambda: self.energy.detect(event, self.repo, self.building),
-                     lambda: self.maintenance.detect(event, self.repo, self.building, self.calendar, self.work_orders),
+                     lambda: self.maintenance.detect(event, self.repo, self.building, self.calendar, self.work_orders,
+                         pending_plans=self._pending_plans(event.available_at_utc)),
                      lambda: self.surge.detect(event, self.repo, self.building, self.calendar),
                      lambda: self.logistics.detect(event, self.repo, self.building, self.calendar),
                      lambda: self.optimization.detect(event, self.repo, self.building)]
         records = self._drain_cancellations(event)
         accepted_actions = {}
-        for detect in detectors:
+        for index, detect in enumerate(detectors):
+            detector = (self.turnaround, self.water, self.energy, self.maintenance,
+                        self.surge, self.logistics, self.optimization)[index]
+            if detector is not self.turnaround and not (
+                detector in (self.water, self.energy, self.optimization)
+                and event.event_type != "clock_tick"
+            ):
+                self._transaction.detector(detector)
             result = detect()
             records.extend(self._drain_cancellations(event))
             for key in result.resolved:
+                for metadata in self._pending_plans(now):
+                    if metadata["key"] == key:
+                        self._cancel_tree(metadata["decision_id"], f"Observed recovery resolves {key}; withdraw the unexecuted pending proposal")
                 self.episodes.close(key)
+            records.extend(self._drain_cancellations(event))
             # Detector order puts resource reservations before dependent messages.
             for candidate in result.candidates:
                 if candidate.asset not in self._allowed_ids:
@@ -149,6 +371,13 @@ class DecisionEngine:
         records.extend(self._flush_notifications(event))
         return sorted(records, key=lambda r: r.event_id)
 
+    def _pending_plans(self, now):
+        ids = {ident for jobs in self.calendar.tentative_reservations.values()
+               for start, end, ident in jobs if instant(end) > instant(now)}
+        return [{"decision_id": ident, "key": self._proposals[ident].key,
+                 "action": self._proposals[ident].action, "asset_id": self._proposals[ident].asset}
+                for ident in sorted(ids) if ident in self._proposals]
+
     def _notification_scope(self, candidate, event):
         if candidate.context.get("notification_scope"):
             return candidate.context["notification_scope"]
@@ -183,8 +412,10 @@ class DecisionEngine:
             if not stamp or instant(stamp) > instant(now):
                 continue
             kind = raw.get("type")
+            if not isinstance(kind, str):
+                continue  # Unknown operational payload cannot establish observed work.
             if kind in {"checkout", "checkout_early"} and raw.get("room_id"):
-                self.calendar.last_dirty_trigger[raw["room_id"]] = stamp
+                self._advance_occurrence(self.calendar.last_dirty_trigger, raw["room_id"], stamp)
             if kind in {"checkin", "checkin_early", "checkin_after_wait", "stay_in_progress"} and raw.get("room_id"):
                 for start, end, decision_id in self.calendar.room_jobs(raw["room_id"]):
                     if instant(end) > instant(now):
@@ -203,6 +434,17 @@ class DecisionEngine:
             if not resource and not room:
                 continue
             if kind in starts:
+                # Availability may lag occurrence. A previously known matching
+                # completion must also cover a start that arrives afterwards.
+                completed = any(
+                    instant(end) >= instant(stamp)
+                    and (worker is None or resource == worker
+                         or (resource is None and target is not None and completed_role == role))
+                    and (target is None or room == target)
+                    and (completed_role is None or role == completed_role)
+                    for (worker, target, completed_role), end in self._observed_completions.items())
+                if completed:
+                    continue
                 self.calendar.observe_start(resource, room, ident, stamp, role=role)
                 # New actual work supersedes incompatible proposed jobs, with an explicit trace.
                 conflicting = set()
@@ -213,12 +455,19 @@ class DecisionEngine:
                 for decision_id in sorted(conflicting):
                     self._cancel_tree(decision_id, f"Observed {kind} {ident} at {stamp}; proposed resource/room availability is no longer verified")
             else:
+                self._advance_occurrence(self._observed_completions, (resource, room, role), stamp)
                 self.calendar.observe_end(resource, room, stamp, role=role)
                 if kind == "cleaning_completed" and room:
-                    self.calendar.last_human_completion[room] = stamp
+                    self._advance_occurrence(self.calendar.last_human_completion, room, stamp)
+                    dirty = self.calendar.last_dirty_trigger.get(room)
                     for start, end, decision_id in list(self.calendar.room_jobs(room)):
-                        if instant(end) > instant(now):
+                        if instant(end) > instant(now) and (not dirty or instant(stamp) >= instant(dirty)):
                             self._cancel_tree(decision_id, f"Observed human cleaning_completed {ident} at {stamp}; verify readiness instead of duplicating work")
+
+    @staticmethod
+    def _advance_occurrence(history, key, stamp):
+        if key not in history or instant(stamp) > instant(history[key]):
+            history[key] = stamp
 
     def _drain_cancellations(self, event):
         records = []
@@ -268,6 +517,7 @@ class DecisionEngine:
         if evidence:
             for entry in self.calendar.cancellations:
                 if entry["decision_id"] == decision_id:
+                    self._transaction.touch(entry)
                     entry["evidence"] = list(dict.fromkeys([*entry.get("evidence", []), *evidence]))
         for ident, record in list(self._decisions.items()):
             if decision_id in record.dependencies:
@@ -299,6 +549,26 @@ class DecisionEngine:
             record = self._decisions.get(ident)
             proposal = self._proposals.get(ident)
             if not record or not proposal or not record.resource_id:
+                continue
+            rooms = {room["id"] for room in self.building["building"]["rooms"]}
+            state = (self.repo.get_room_state(proposal.asset, now) or {}) if proposal.asset in rooms else {}
+            move_into_room = (event.event_type == "operational_event"
+                              and event.payload.get("type") == "room_reassigned"
+                              and event.payload.get("to_room") == proposal.asset)
+            if move_into_room and state.get("occupancy") == "occupied":
+                self._cancel_tree(ident, f"Observed incoming room reassignment occupies {proposal.asset} as of {now}",
+                                  evidence=[f"{event.source.file}:{event.source.record_id}", *state.get("evidence", [])])
+                continue
+            observed = state.get("last_observed_utc")
+            dirty = self.calendar.last_dirty_trigger.get(proposal.asset)
+            clean = (state.get("housekeeping_state") == "clean" and observed
+                     and (not dirty or instant(observed) >= instant(dirty))
+                     and instant(record.timestamp_utc) <= instant(observed) <= instant(now)
+                     and (instant(now)-instant(observed)).total_seconds() <= self.config.telemetry_max_age_minutes*60)
+            if clean and (proposal.action == "schedule_cleaning"
+                          or proposal.action == "dispatch_robot" and proposal.context.get("task") == "floor_cleaning"):
+                self._cancel_tree(ident, f"Fresh clean telemetry makes proposed cleaning of {proposal.asset} unnecessary as of {now}",
+                                  evidence=state.get("evidence", []))
                 continue
             scope = self._notification_scope(proposal, event)
             if scope.startswith("booking:"):
@@ -356,6 +626,11 @@ class DecisionEngine:
 
     def run(self) -> list[DecisionRecordV2]:
         records = []
-        for event in self.repo.iter_events():
-            records.extend(self.process(event))
+        # Every fact available at a clock instant precedes its periodic scan.
+        # Only equal-time envelopes are buffered; later facts stay unavailable.
+        snapshots = (deepcopy(event) for event in self.repo.iter_events())
+        for _, events in groupby(snapshots, key=lambda e: instant(e.available_at_utc)):
+            batch = sorted(events, key=lambda e: (e.event_type == "clock_tick", e.event_id))
+            for event in batch:
+                records.extend(self.process(event))
         return records

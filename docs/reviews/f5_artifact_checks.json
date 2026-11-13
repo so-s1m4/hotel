@@ -1,0 +1,468 @@
+{
+  "verification_version": "1.1",
+  "checked_at_utc": "2026-11-13T20:04:45.698398Z",
+  "all_checks_passed": true,
+  "check_count": 44,
+  "source_hash_drift": false,
+  "scope": "Independent F5 output consistency and unlabelled empirical/provenance checks, not ground-truth recall/precision, confirmed-leak truth or real savings.",
+  "refresh_command": "python -m scripts.refresh_f5_artifacts",
+  "no_full_replay_performed": true,
+  "current_required_code_sha256": {
+    "water.py": "6b701c8dfd03cfece80afe173a2c644ce90b1d7d2d600f4c2041815e714b70aa",
+    "weak_water.py": "8c0c527e1b8220a9b96938825d9857c4422ea8e6eb5c74f73f7921f72c648aa3",
+    "core.py": "5d69dc0aaa80ea6a6443b4f863c38178917d55586b623d6964f83c445926779a",
+    "planner.py": "558d0541fcd57e58c53b9c79d630e57cab0971e9b3b7859c7a61ad5c2aa00520"
+  },
+  "baseline_commit": "3ab9541a02ce72ef8b3c70d27fdf2868e94dc6c4",
+  "full_run_source_provenance_limit": "Full-run JSON does not emit runtime source hashes. Evaluated water/core/weak snapshots and the full-pipeline planner snapshot match the current tree; full-run config and every water diagnostic counter match the paired candidate. This is cross-artifact consistency evidence, not signed runtime build attestation.",
+  "current_verifier_sha256": {
+    "validation.py": "b4bb963dd7d8416f5da1b7e0d1d7937edd27872ad783390cbebae6bdb0296c4c",
+    "evaluate_water.py": "af996f7040cd7945c94175d72e5c099ef98b735a0bbe884cb1b96472d1660d10",
+    "refresh_f5_artifacts.py": "f4feb2d4c0ed62390ca2556dadc7c653f242cfe05220872f690526b2d402f72a"
+  },
+  "test_log": {
+    "present": true,
+    "path": "outputs/f5_tests.txt",
+    "sha256": "ec53c2aad17a3a03ccbd05c82affae5149d5e7c784130ccefe9ac298023bc771",
+    "summary": "699 passed in 3.07s",
+    "passed_count": 699,
+    "status": "reported_pass"
+  },
+  "evaluation_copies": {
+    "paired_sha256": "79f42c71662a5b7b8d38252a9bc671eded4e738862f545cc452f762d3eedce2a",
+    "raw_sha256": "c6a42a19320a44081ff2384d18436f2a0731a057191b88657ab334e8378e8a62",
+    "paired_byte_identical": true,
+    "raw_generated_independently_during_refresh": true
+  },
+  "profiles": {
+    "quickstart": {
+      "checks": {
+        "water_source_matches": true,
+        "weak_source_matches": true,
+        "core_source_matches": true,
+        "all_detector_source_hashes_match": true,
+        "shared_episode_tracker_matches": true,
+        "paired_raw_source_hashes_match": true,
+        "full_run_config_equals_paired_config": true,
+        "full_run_config_equals_current_defaults": true,
+        "full_run_water_diagnostics_equal_paired_candidate": true,
+        "full_run_no_safety_rejections": true,
+        "rejections_file_empty": true,
+        "paired_run_not_partial": true,
+        "baseline_blob_hash_matches_pinned_git": true,
+        "independent_raw_source_hashes_match": true,
+        "full_run_decision_count_equals_validated_rows": true,
+        "independent_output_validator_passed": true,
+        "validated_outputs_match_current_files": true,
+        "raw_crosscheck_main_latest_pair_complete_ticks": true,
+        "raw_crosscheck_main_strict_1h_complete_ticks": true,
+        "raw_crosscheck_main_latest_pair_available_but_1h_blocked_ticks": true,
+        "raw_crosscheck_room_negative_delta": true,
+        "raw_crosscheck_room_missing_meter_value": true
+      },
+      "run": {
+        "events": 3939,
+        "decisions": 335,
+        "safety_rejections": 0,
+        "elapsed_seconds": 5.211
+      },
+      "output_validation": {
+        "decision_rows": 335,
+        "valid_unique_decisions": 335,
+        "audit_rows": 335,
+        "joined_decisions": 335,
+        "cancellation_targets": 4,
+        "jobs_cancelled_before_start": 4,
+        "live_intervals": 88,
+        "live_pending_intervals": 3,
+        "resource_overlap_pairs": 0,
+        "room_overlap_pairs": 0,
+        "observed_equal_time_ties": 0,
+        "duplicate_exact_notifications": 0
+      },
+      "issue_type_counts": {
+        "heating_comfort": 149,
+        "room_turnaround": 33,
+        "logistics": 6,
+        "energy_optimization": 105,
+        "water_leak": 1,
+        "heating_performance": 5,
+        "data_quality": 1,
+        "occupancy_surge": 34,
+        "ventilation_maintenance": 1
+      },
+      "action_counts": {
+        "adjust_room_setpoint": 116,
+        "notify_guest": 93,
+        "order_service": 5,
+        "defer_action": 5,
+        "optimize_energy": 85,
+        "request_inspection": 13,
+        "flag_anomaly": 11,
+        "schedule_cleaning": 7
+      },
+      "paired_baseline_emissions": {
+        "strong_room": 1
+      },
+      "paired_candidate_emissions": {
+        "strong_room": 1
+      },
+      "paired_window_change": {
+        "added_candidate_windows": 0,
+        "removed_candidate_windows": 0,
+        "added_emission_windows": 0,
+        "removed_emission_windows": 0,
+        "added_emission_examples": [],
+        "removed_emission_examples": [],
+        "interpretation": "Changes in review burden/availability, not true/false positives or labelled recall. Episode timing can shift when a new earlier path opens the same asset episode."
+      },
+      "main_interval_availability": {
+        "main_insufficient_pair": 1,
+        "main_latest_pair_complete_ticks": 1415,
+        "main_strict_1h_complete_ticks": 872,
+        "main_latest_pair_available_but_1h_blocked_ticks": 543,
+        "main_nonnegative_pair": 2015
+      },
+      "artifact_sha256": {
+        "decisions": "569bb38211825e5c08d1933352a3ed987fce9094cd74bd17a02ce53375ed1bad",
+        "audit": "fe91c1ae5d2d0d307bd886f10ee9df408c698937c697b7300c4140f6665183b2",
+        "run_metadata": "bff2062541e086f4983bfd2ceca6cb13fcdd9400fa9ec6eddd426f1e0980efa5",
+        "validation": "49758379963169f85ceea252700cf9e7afb667d5bd756f73955fc2ff940a46d2"
+      }
+    },
+    "dev": {
+      "checks": {
+        "water_source_matches": true,
+        "weak_source_matches": true,
+        "core_source_matches": true,
+        "all_detector_source_hashes_match": true,
+        "shared_episode_tracker_matches": true,
+        "paired_raw_source_hashes_match": true,
+        "full_run_config_equals_paired_config": true,
+        "full_run_config_equals_current_defaults": true,
+        "full_run_water_diagnostics_equal_paired_candidate": true,
+        "full_run_no_safety_rejections": true,
+        "rejections_file_empty": true,
+        "paired_run_not_partial": true,
+        "baseline_blob_hash_matches_pinned_git": true,
+        "independent_raw_source_hashes_match": true,
+        "full_run_decision_count_equals_validated_rows": true,
+        "independent_output_validator_passed": true,
+        "validated_outputs_match_current_files": true,
+        "raw_crosscheck_main_latest_pair_complete_ticks": true,
+        "raw_crosscheck_main_strict_1h_complete_ticks": true,
+        "raw_crosscheck_main_latest_pair_available_but_1h_blocked_ticks": true,
+        "raw_crosscheck_room_negative_delta": true,
+        "raw_crosscheck_room_missing_meter_value": true
+      },
+      "run": {
+        "events": 65434,
+        "decisions": 6343,
+        "safety_rejections": 0,
+        "elapsed_seconds": 101.233
+      },
+      "output_validation": {
+        "decision_rows": 6343,
+        "valid_unique_decisions": 6343,
+        "audit_rows": 6343,
+        "joined_decisions": 6343,
+        "cancellation_targets": 14,
+        "jobs_cancelled_before_start": 14,
+        "live_intervals": 2964,
+        "live_pending_intervals": 0,
+        "resource_overlap_pairs": 0,
+        "room_overlap_pairs": 0,
+        "observed_equal_time_ties": 0,
+        "duplicate_exact_notifications": 0
+      },
+      "issue_type_counts": {
+        "heating_comfort": 2178,
+        "energy_optimization": 2997,
+        "occupancy_surge": 764,
+        "room_turnaround": 218,
+        "logistics": 170,
+        "heating_performance": 2,
+        "data_quality": 6,
+        "water_leak": 2,
+        "water_low_rate_review": 2,
+        "ventilation_maintenance": 4
+      },
+      "action_counts": {
+        "adjust_room_setpoint": 1032,
+        "notify_guest": 1831,
+        "optimize_energy": 2964,
+        "flag_anomaly": 167,
+        "order_service": 86,
+        "request_inspection": 149,
+        "defer_action": 100,
+        "schedule_cleaning": 14
+      },
+      "paired_baseline_emissions": {
+        "strong_room": 2
+      },
+      "paired_candidate_emissions": {
+        "strong_room": 2,
+        "persistent_weak": 2
+      },
+      "paired_window_change": {
+        "added_candidate_windows": 56,
+        "removed_candidate_windows": 0,
+        "added_emission_windows": 2,
+        "removed_emission_windows": 0,
+        "added_emission_examples": [
+          [
+            "2026-06-24T02:00:00Z",
+            "water:R403",
+            "persistent_weak",
+            "flag_anomaly",
+            "initial"
+          ],
+          [
+            "2026-11-14T03:00:00Z",
+            "water:R208",
+            "persistent_weak",
+            "flag_anomaly",
+            "initial"
+          ]
+        ],
+        "removed_emission_examples": [],
+        "interpretation": "Changes in review burden/availability, not true/false positives or labelled recall. Episode timing can shift when a new earlier path opens the same asset episode."
+      },
+      "main_interval_availability": {
+        "main_insufficient_pair": 1,
+        "main_latest_pair_complete_ticks": 22969,
+        "main_strict_1h_complete_ticks": 12356,
+        "main_latest_pair_available_but_1h_blocked_ticks": 10613,
+        "main_nonnegative_pair": 35039
+      },
+      "artifact_sha256": {
+        "decisions": "282623e908a7faf84c9dfb0c67cf5f7e541c36d92f5e0a056857b6a44545f58c",
+        "audit": "b2fff2971f4fcfccf77eddcfaee17668db3970d104ee3c518848ae07dce26b5c",
+        "run_metadata": "477d124335ca5bb812543eae509e2abe8c12b2315fd2b4b38ec2aef8eedf9937",
+        "validation": "edc19124e08964df8227a42efbbeafd217a7f2ddc6a0324949c3cafba786fc8f"
+      }
+    }
+  },
+  "checks": [
+    {
+      "profile": "quickstart",
+      "check": "water_source_matches",
+      "passed": true
+    },
+    {
+      "profile": "quickstart",
+      "check": "weak_source_matches",
+      "passed": true
+    },
+    {
+      "profile": "quickstart",
+      "check": "core_source_matches",
+      "passed": true
+    },
+    {
+      "profile": "quickstart",
+      "check": "all_detector_source_hashes_match",
+      "passed": true
+    },
+    {
+      "profile": "quickstart",
+      "check": "shared_episode_tracker_matches",
+      "passed": true
+    },
+    {
+      "profile": "quickstart",
+      "check": "paired_raw_source_hashes_match",
+      "passed": true
+    },
+    {
+      "profile": "quickstart",
+      "check": "full_run_config_equals_paired_config",
+      "passed": true
+    },
+    {
+      "profile": "quickstart",
+      "check": "full_run_config_equals_current_defaults",
+      "passed": true
+    },
+    {
+      "profile": "quickstart",
+      "check": "full_run_water_diagnostics_equal_paired_candidate",
+      "passed": true
+    },
+    {
+      "profile": "quickstart",
+      "check": "full_run_no_safety_rejections",
+      "passed": true
+    },
+    {
+      "profile": "quickstart",
+      "check": "rejections_file_empty",
+      "passed": true
+    },
+    {
+      "profile": "quickstart",
+      "check": "paired_run_not_partial",
+      "passed": true
+    },
+    {
+      "profile": "quickstart",
+      "check": "baseline_blob_hash_matches_pinned_git",
+      "passed": true
+    },
+    {
+      "profile": "quickstart",
+      "check": "independent_raw_source_hashes_match",
+      "passed": true
+    },
+    {
+      "profile": "quickstart",
+      "check": "full_run_decision_count_equals_validated_rows",
+      "passed": true
+    },
+    {
+      "profile": "quickstart",
+      "check": "independent_output_validator_passed",
+      "passed": true
+    },
+    {
+      "profile": "quickstart",
+      "check": "validated_outputs_match_current_files",
+      "passed": true
+    },
+    {
+      "profile": "quickstart",
+      "check": "raw_crosscheck_main_latest_pair_complete_ticks",
+      "passed": true
+    },
+    {
+      "profile": "quickstart",
+      "check": "raw_crosscheck_main_strict_1h_complete_ticks",
+      "passed": true
+    },
+    {
+      "profile": "quickstart",
+      "check": "raw_crosscheck_main_latest_pair_available_but_1h_blocked_ticks",
+      "passed": true
+    },
+    {
+      "profile": "quickstart",
+      "check": "raw_crosscheck_room_negative_delta",
+      "passed": true
+    },
+    {
+      "profile": "quickstart",
+      "check": "raw_crosscheck_room_missing_meter_value",
+      "passed": true
+    },
+    {
+      "profile": "dev",
+      "check": "water_source_matches",
+      "passed": true
+    },
+    {
+      "profile": "dev",
+      "check": "weak_source_matches",
+      "passed": true
+    },
+    {
+      "profile": "dev",
+      "check": "core_source_matches",
+      "passed": true
+    },
+    {
+      "profile": "dev",
+      "check": "all_detector_source_hashes_match",
+      "passed": true
+    },
+    {
+      "profile": "dev",
+      "check": "shared_episode_tracker_matches",
+      "passed": true
+    },
+    {
+      "profile": "dev",
+      "check": "paired_raw_source_hashes_match",
+      "passed": true
+    },
+    {
+      "profile": "dev",
+      "check": "full_run_config_equals_paired_config",
+      "passed": true
+    },
+    {
+      "profile": "dev",
+      "check": "full_run_config_equals_current_defaults",
+      "passed": true
+    },
+    {
+      "profile": "dev",
+      "check": "full_run_water_diagnostics_equal_paired_candidate",
+      "passed": true
+    },
+    {
+      "profile": "dev",
+      "check": "full_run_no_safety_rejections",
+      "passed": true
+    },
+    {
+      "profile": "dev",
+      "check": "rejections_file_empty",
+      "passed": true
+    },
+    {
+      "profile": "dev",
+      "check": "paired_run_not_partial",
+      "passed": true
+    },
+    {
+      "profile": "dev",
+      "check": "baseline_blob_hash_matches_pinned_git",
+      "passed": true
+    },
+    {
+      "profile": "dev",
+      "check": "independent_raw_source_hashes_match",
+      "passed": true
+    },
+    {
+      "profile": "dev",
+      "check": "full_run_decision_count_equals_validated_rows",
+      "passed": true
+    },
+    {
+      "profile": "dev",
+      "check": "independent_output_validator_passed",
+      "passed": true
+    },
+    {
+      "profile": "dev",
+      "check": "validated_outputs_match_current_files",
+      "passed": true
+    },
+    {
+      "profile": "dev",
+      "check": "raw_crosscheck_main_latest_pair_complete_ticks",
+      "passed": true
+    },
+    {
+      "profile": "dev",
+      "check": "raw_crosscheck_main_strict_1h_complete_ticks",
+      "passed": true
+    },
+    {
+      "profile": "dev",
+      "check": "raw_crosscheck_main_latest_pair_available_but_1h_blocked_ticks",
+      "passed": true
+    },
+    {
+      "profile": "dev",
+      "check": "raw_crosscheck_room_negative_delta",
+      "passed": true
+    },
+    {
+      "profile": "dev",
+      "check": "raw_crosscheck_room_missing_meter_value",
+      "passed": true
+    }
+  ]
+}

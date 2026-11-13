@@ -13,13 +13,14 @@ class MockExecutor:
         self.audit: list[dict] = []
         self._completed: dict[str, dict] = {}
         self._submitted: dict[str, tuple[str, str]] = {}
+        self._submitted_calendars: dict[str, list[object]] = {}
 
     @staticmethod
     def _parameters(decision: DecisionRecordV2, context: dict) -> dict:
         parameters = {k: deepcopy(context[k]) for k in (
             "start_utc", "end_utc", "setpoint_c", "task", "battery_power_kw",
             "duration_minutes", "expected_soc_kwh", "transfer_liters", "service",
-            "lead_hours", "container_max_fill_pct", "water_shutoff", "safety_critical", "cancelled_decision_id",
+            "lead_hours", "weak_water_metrics", "container_max_fill_pct", "water_shutoff", "safety_critical", "cancelled_decision_id",
             "notable_cost", "common_area_route", "oncall", "waiting_guest",
         ) if k in context}
         parameters["room_id"] = context.get("room", {}).get("room_id")
@@ -33,19 +34,103 @@ class MockExecutor:
                 parameters[key + "_id"] = context[key].get("id")
         return parameters
 
+    def _reject_withdrawn(self, decision: DecisionRecordV2, context: dict) -> None:
+        """A known withdrawal also invalidates an otherwise idempotent retry."""
+        try:
+            calendars = [*self._submitted_calendars.get(decision.event_id, []),
+                         context.get("calendar")]
+            checked = []
+            for calendar in calendars:
+                if calendar is None or any(calendar is prior for prior in checked):
+                    continue
+                checked.append(calendar)
+                cancellations = calendar.cancellations
+                if not isinstance(cancellations, list):
+                    raise TypeError("Calendar cancellations must be a list")
+                for entry in cancellations:
+                    if (not isinstance(entry, dict)
+                            or not isinstance(entry.get("decision_id"), str)
+                            or not entry["decision_id"]):
+                        raise ValueError("Invalid calendar cancellation record")
+                    if entry["decision_id"] == decision.event_id:
+                        raise SafetyViolation("Cancelled decision cannot be resubmitted; replan with a fresh ID")
+        except SafetyViolation:
+            raise
+        except (KeyError, TypeError, ValueError, OverflowError, AttributeError) as exc:
+            raise SafetyViolation(f"Invalid safety context: {exc}") from exc
+
     def execute(self, decision: DecisionRecordV2, context: dict) -> dict:
         try:
             parameters = self._parameters(decision, context)
             encoded = (decision.model_dump_json(warnings=False), json.dumps(parameters, sort_keys=True, allow_nan=False))
         except (TypeError, ValueError, AttributeError, KeyError) as exc:
             raise SafetyViolation(f"Invalid execution parameters: {exc}") from exc
+        self._reject_withdrawn(decision, context)
         if decision.event_id in self._submitted and self._submitted[decision.event_id] != encoded:
             raise SafetyViolation("Conflicting decision or command parameters for reused ID")
         if decision.event_id in self._completed:
             return deepcopy(self._completed[decision.event_id])
+        # Safety checks can prune expired holds, and an accepted resource hold can
+        # precede a failed volume hold. Roll back only planning state, never the
+        # calendar object or its observed work/cancellation history.
+        reservation_state = []
+        try:
+            calendar = context.get("calendar")
+            if calendar is not None:
+                for name in ("reservations", "room_reservations", "tentative_reservations",
+                             "tentative_room_reservations", "volume_reservations"):
+                    collection = getattr(calendar, name)
+                    if not isinstance(collection, dict) or any(
+                            not isinstance(rows, list) for rows in collection.values()):
+                        raise TypeError("Calendar capacity ledgers must contain lists")
+                    reservation_state.append((collection, {
+                        key: (rows, list(rows)) for key, rows in collection.items()
+                    }))
+        except (KeyError, TypeError, ValueError, OverflowError, AttributeError) as exc:
+            raise SafetyViolation(f"Invalid safety context: {exc}") from exc
+        audit_count = len(self.audit)
+        previous_submitted = self._submitted.get(decision.event_id)
+        previous_calendars = self._submitted_calendars.get(decision.event_id)
+        calendar_count = len(previous_calendars) if previous_calendars is not None else 0
+        try:
+            return self._execute(decision, context, parameters, encoded)
+        except BaseException as exc:
+            for collection, snapshot in reservation_state:
+                collection.clear()
+                for key, (rows, contents) in snapshot.items():
+                    rows[:] = contents
+                    collection[key] = rows
+            del self.audit[audit_count:]
+            self._completed.pop(decision.event_id, None)
+            if previous_submitted is None:
+                self._submitted.pop(decision.event_id, None)
+            else:
+                self._submitted[decision.event_id] = previous_submitted
+            if previous_calendars is None:
+                self._submitted_calendars.pop(decision.event_id, None)
+            else:
+                del previous_calendars[calendar_count:]
+                self._submitted_calendars[decision.event_id] = previous_calendars
+            if isinstance(exc, SafetyViolation):
+                raise
+            if isinstance(exc, (KeyError, TypeError, ValueError, OverflowError, AttributeError)):
+                raise SafetyViolation(f"Invalid execution context: {exc}") from exc
+            raise
+
+    def _execute(self, decision: DecisionRecordV2, context: dict, parameters: dict,
+                 encoded: tuple[str, str]) -> dict:
         validate_safety(decision, context)
         execution_utc = context.get("execution_utc", decision.timestamp_utc)
-        if instant(execution_utc) != instant(decision.timestamp_utc):
+        decision_time = instant(decision.timestamp_utc)
+        calendars = [*self._submitted_calendars.get(decision.event_id, []), context.get("calendar")]
+        # An omitted/old caller timestamp cannot rewind a clock already known
+        # by an originating calendar. Completed receipts return before this gate.
+        known_later_clock = any(
+            calendar is not None and calendar.current_time is not None
+            and instant(calendar.current_time) > decision_time
+            for calendar in calendars
+        )
+        if instant(execution_utc) != decision_time or known_later_clock:
             raise SafetyViolation("A deferred command must be replanned with fresh evidence at execution time")
         if decision.requires_human_approval and context.get("human_approval_granted") is not True:
             status, phase = "pending_human_approval", "approval_pending"
@@ -85,6 +170,11 @@ class MockExecutor:
             "parameters": parameters, "effects_applied": False, "observed_history_changed": False,
         }
         self._submitted[decision.event_id] = encoded
+        calendar = context.get("calendar")
+        if calendar is not None:
+            submitted_calendars = self._submitted_calendars.setdefault(decision.event_id, [])
+            if not any(calendar is prior for prior in submitted_calendars):
+                submitted_calendars.append(calendar)
         self.audit.append(record)
         # Approval requirements are not grants. Revisiting a pending proposal must
         # retain exactly the command that was proposed and pass current checks again.

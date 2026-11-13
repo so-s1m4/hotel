@@ -1,0 +1,1774 @@
+{
+  "evaluation_version": "1.0",
+  "evaluation_mode": "paired_chronological_detector",
+  "scope": "Unlabelled water diagnostics only; no ground-truth precision/recall, leak truth or measured intervention benefit.",
+  "evaluator_source_sha256": "af996f7040cd7945c94175d72e5c099ef98b735a0bbe884cb1b96472d1660d10",
+  "profiles_are_independent": true,
+  "profiles": [
+    {
+      "ticks_evaluated": 2016,
+      "last_tick_utc": "2026-01-25T23:45:00Z",
+      "partial_run": false,
+      "elapsed_seconds": 5.830093625001609,
+      "config": {
+        "cleaning_minutes": 45,
+        "inspection_minutes": 15,
+        "telemetry_max_age_minutes": 30,
+        "water_window_minutes": 60,
+        "water_min_l_per_interval": 3.0,
+        "water_low_window_minutes": 180,
+        "water_weak_persistent_window_minutes": 240,
+        "water_weak_max_backstep_l": 0.5,
+        "water_low_min_l_per_interval": 1.0,
+        "water_low_baseline_min_intervals": 12,
+        "water_max_l_per_interval": 100.0,
+        "main_residual_min_l_per_interval": 120.0,
+        "cold_window_minutes": 30,
+        "comfort_recovery_margin_c": 0.25,
+        "cold_forecast_c": 0.0,
+        "low_cop": 1.7,
+        "filter_dp_pa": 250,
+        "ahu_flow_fraction": 0.75,
+        "technician_minutes": 60,
+        "robot_minutes": 20,
+        "surge_arrival_fraction": 0.4,
+        "surge_occupancy_fraction": 0.8,
+        "waste_trigger_pct": 80,
+        "container_max_fill_pct": 95,
+        "vending_low_fraction": 0.2,
+        "battery_price_spread": 0.08
+      },
+      "exposure": {
+        "counts": {
+          "ticks": 2016,
+          "room_tick_opportunities": 80640,
+          "room_insufficient_pair": 40,
+          "main_insufficient_pair": 1,
+          "main_latest_pair_complete_ticks": 1415,
+          "main_strict_1h_complete_ticks": 872,
+          "main_latest_pair_available_but_1h_blocked_ticks": 543,
+          "room_nonnegative_pair": 79716,
+          "main_nonnegative_pair": 2015,
+          "room_missing_meter_value": 546,
+          "causally_eligible_signed_night_intervals": 6076,
+          "weak_pair_quality_eligible_night_intervals": 6058,
+          "eligible_nonnegative_night_intervals": 6053,
+          "room_negative_delta": 338,
+          "negative_step_le_0.5l": 106,
+          "negative_step_gt100l": 1
+        },
+        "primary_eligibility_exclusions": {
+          "insufficient_pair": 40,
+          "occupied_or_unknown": 12805,
+          "missing_meter_value": 546,
+          "day_or_night_boundary": 60986,
+          "housekeeping_not_observed_clean": 187
+        },
+        "distributions": {
+          "all_signed_room_pairs": {
+            "count": 80054,
+            "mean_l": 0.7528630674294864,
+            "min_l": -27020.399999999998,
+            "max_l": 174.8000000000029,
+            "quantiles_0.1l_binned_within_plus_minus2000l": {
+              "p10": 0.0,
+              "p50": 0.0,
+              "p90": 0.2,
+              "p99": 43.1
+            },
+            "quantile_covered_count": 80053,
+            "range_counts": {
+              "zero": 71681,
+              "1_to_lt3": 3390,
+              "3_to_100": 3826,
+              "0.5_to_lt1": 719,
+              "gt100": 23,
+              "negative": 338,
+              "positive_lt0.5": 77
+            },
+            "reporting_precision_note": "Range labels snap only positive 0.5/1/3/100 L thresholds within 1e-9 L; raw signed deltas, negative signs, detector inputs and extrema are unchanged."
+          },
+          "eligible_signed_night_intervals": {
+            "count": 6076,
+            "mean_l": 0.10260039499670935,
+            "min_l": -2.3999999999999773,
+            "max_l": 29.20000000001164,
+            "quantiles_0.1l_binned_within_plus_minus2000l": {
+              "p10": 0.0,
+              "p50": 0.0,
+              "p90": 0.0,
+              "p99": 0.0
+            },
+            "quantile_covered_count": 6076,
+            "range_counts": {
+              "zero": 6007,
+              "3_to_100": 23,
+              "negative": 23,
+              "1_to_lt3": 13,
+              "positive_lt0.5": 4,
+              "0.5_to_lt1": 6
+            },
+            "reporting_precision_note": "Range labels snap only positive 0.5/1/3/100 L thresholds within 1e-9 L; raw signed deltas, negative signs, detector inputs and extrema are unchanged."
+          },
+          "main_minus_all_room_latest_interval_residual_liters": {
+            "count": 1415,
+            "mean_l": 3.2913780918690514,
+            "min_l": -2.5999999999112333,
+            "max_l": 10.000000000282284,
+            "quantiles_0.1l_binned_within_plus_minus2000l": {
+              "p10": 0.0,
+              "p50": 3.6,
+              "p90": 6.8,
+              "p99": 9.1
+            },
+            "quantile_covered_count": 1415,
+            "range_counts": {
+              "zero": 180,
+              "positive_lt0.5": 115,
+              "negative": 118,
+              "1_to_lt3": 194,
+              "3_to_100": 802,
+              "0.5_to_lt1": 6
+            },
+            "reporting_precision_note": "Range labels snap only positive 0.5/1/3/100 L thresholds within 1e-9 L; raw signed deltas, negative signs, detector inputs and extrema are unchanged."
+          },
+          "night_signed_room_pairs": {
+            "count": 19068,
+            "mean_l": 0.350388084749316,
+            "min_l": -2.6000000000000014,
+            "max_l": 96.20000000000437,
+            "quantiles_0.1l_binned_within_plus_minus2000l": {
+              "p10": 0.0,
+              "p50": 0.0,
+              "p90": 0.0,
+              "p99": 6.0
+            },
+            "quantile_covered_count": 19068,
+            "range_counts": {
+              "zero": 18207,
+              "1_to_lt3": 333,
+              "3_to_100": 377,
+              "0.5_to_lt1": 57,
+              "negative": 82,
+              "positive_lt0.5": 12
+            },
+            "reporting_precision_note": "Range labels snap only positive 0.5/1/3/100 L thresholds within 1e-9 L; raw signed deltas, negative signs, detector inputs and extrema are unchanged."
+          },
+          "observed_vacant_night_pairs_before_operation_exclusions": {
+            "count": 6263,
+            "mean_l": 0.09953696311671818,
+            "min_l": -2.3999999999999773,
+            "max_l": 29.20000000001164,
+            "quantiles_0.1l_binned_within_plus_minus2000l": {
+              "p10": 0.0,
+              "p50": 0.0,
+              "p90": 0.0,
+              "p99": 0.0
+            },
+            "quantile_covered_count": 6263,
+            "range_counts": {
+              "zero": 6194,
+              "3_to_100": 23,
+              "negative": 23,
+              "1_to_lt3": 13,
+              "positive_lt0.5": 4,
+              "0.5_to_lt1": 6
+            },
+            "reporting_precision_note": "Range labels snap only positive 0.5/1/3/100 L thresholds within 1e-9 L; raw signed deltas, negative signs, detector inputs and extrema are unchanged."
+          }
+        },
+        "per_room": {
+          "R101": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 2003,
+            "missing_meter_value": 12,
+            "causally_eligible_signed_night_intervals": 138,
+            "strict_main_window_blocks": 34,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R102": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 2011,
+            "causally_eligible_signed_night_intervals": 276,
+            "missing_meter_value": 4,
+            "strict_main_window_blocks": 14,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R103": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 2005,
+            "missing_meter_value": 10,
+            "causally_eligible_signed_night_intervals": 187,
+            "strict_main_window_blocks": 29,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R104": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 2007,
+            "causally_eligible_signed_night_intervals": 210,
+            "missing_meter_value": 8,
+            "strict_main_window_blocks": 24,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R105": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 2005,
+            "missing_meter_value": 10,
+            "causally_eligible_signed_night_intervals": 113,
+            "strict_main_window_blocks": 29,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R106": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 2005,
+            "causally_eligible_signed_night_intervals": 279,
+            "missing_meter_value": 10,
+            "strict_main_window_blocks": 29,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R107": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 2009,
+            "causally_eligible_signed_night_intervals": 253,
+            "missing_meter_value": 6,
+            "strict_main_window_blocks": 19,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R108": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 2007,
+            "missing_meter_value": 8,
+            "causally_eligible_signed_night_intervals": 138,
+            "strict_main_window_blocks": 24,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R109": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 2011,
+            "causally_eligible_signed_night_intervals": 164,
+            "missing_meter_value": 4,
+            "strict_main_window_blocks": 14,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R110": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 2011,
+            "causally_eligible_signed_night_intervals": 92,
+            "missing_meter_value": 4,
+            "strict_main_window_blocks": 14,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R201": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 2009,
+            "missing_meter_value": 6,
+            "causally_eligible_signed_night_intervals": 187,
+            "strict_main_window_blocks": 19,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R202": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 2013,
+            "causally_eligible_signed_night_intervals": 118,
+            "missing_meter_value": 2,
+            "strict_main_window_blocks": 9,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R203": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 1999,
+            "missing_meter_value": 16,
+            "causally_eligible_signed_night_intervals": 95,
+            "strict_main_window_blocks": 44,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R204": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 2013,
+            "causally_eligible_signed_night_intervals": 182,
+            "missing_meter_value": 2,
+            "strict_main_window_blocks": 9,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R205": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 2005,
+            "missing_meter_value": 10,
+            "causally_eligible_signed_night_intervals": 161,
+            "strict_main_window_blocks": 29,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R206": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 2007,
+            "missing_meter_value": 8,
+            "causally_eligible_signed_night_intervals": 114,
+            "strict_main_window_blocks": 24,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R207": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 2013,
+            "causally_eligible_signed_night_intervals": 207,
+            "missing_meter_value": 2,
+            "strict_main_window_blocks": 9,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R208": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 2011,
+            "causally_eligible_signed_night_intervals": 141,
+            "missing_meter_value": 4,
+            "strict_main_window_blocks": 14,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R209": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 2005,
+            "causally_eligible_signed_night_intervals": 182,
+            "missing_meter_value": 10,
+            "strict_main_window_blocks": 29,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R210": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 2001,
+            "missing_meter_value": 14,
+            "causally_eligible_signed_night_intervals": 161,
+            "strict_main_window_blocks": 39,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R301": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 1982,
+            "missing_meter_value": 33,
+            "causally_eligible_signed_night_intervals": 195,
+            "strict_main_window_blocks": 58,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R302": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 1984,
+            "causally_eligible_signed_night_intervals": 141,
+            "missing_meter_value": 31,
+            "strict_main_window_blocks": 53,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R303": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 1986,
+            "missing_meter_value": 29,
+            "causally_eligible_signed_night_intervals": 218,
+            "strict_main_window_blocks": 48,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R304": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 1984,
+            "missing_meter_value": 31,
+            "causally_eligible_signed_night_intervals": 95,
+            "strict_main_window_blocks": 53,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R305": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 1984,
+            "missing_meter_value": 31,
+            "causally_eligible_signed_night_intervals": 155,
+            "strict_main_window_blocks": 53,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R306": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 1986,
+            "causally_eligible_signed_night_intervals": 169,
+            "missing_meter_value": 29,
+            "strict_main_window_blocks": 48,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R307": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 1986,
+            "causally_eligible_signed_night_intervals": 46,
+            "missing_meter_value": 29,
+            "strict_main_window_blocks": 48,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R308": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 1990,
+            "causally_eligible_signed_night_intervals": 178,
+            "missing_meter_value": 25,
+            "strict_main_window_blocks": 38,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R309": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 1976,
+            "missing_meter_value": 39,
+            "causally_eligible_signed_night_intervals": 100,
+            "strict_main_window_blocks": 70,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R310": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 1986,
+            "missing_meter_value": 29,
+            "causally_eligible_signed_night_intervals": 63,
+            "strict_main_window_blocks": 48,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R401": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 2005,
+            "causally_eligible_signed_night_intervals": 23,
+            "missing_meter_value": 10,
+            "strict_main_window_blocks": 29,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R402": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 2005,
+            "causally_eligible_signed_night_intervals": 118,
+            "missing_meter_value": 10,
+            "strict_main_window_blocks": 29,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R403": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 1669,
+            "missing_meter_value": 8,
+            "causally_eligible_signed_night_intervals": 205,
+            "negative_delta": 338,
+            "strict_main_window_blocks": 737,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 1
+          },
+          "R404": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 2001,
+            "missing_meter_value": 14,
+            "causally_eligible_signed_night_intervals": 230,
+            "strict_main_window_blocks": 39,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R405": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 2003,
+            "causally_eligible_signed_night_intervals": 233,
+            "missing_meter_value": 12,
+            "strict_main_window_blocks": 34,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R406": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 2007,
+            "missing_meter_value": 8,
+            "causally_eligible_signed_night_intervals": 92,
+            "strict_main_window_blocks": 24,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R407": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 2009,
+            "causally_eligible_signed_night_intervals": 161,
+            "missing_meter_value": 6,
+            "strict_main_window_blocks": 19,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R408": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 1999,
+            "causally_eligible_signed_night_intervals": 69,
+            "missing_meter_value": 16,
+            "strict_main_window_blocks": 44,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R409": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 2013,
+            "causally_eligible_signed_night_intervals": 92,
+            "missing_meter_value": 2,
+            "strict_main_window_blocks": 9,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R410": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 2011,
+            "causally_eligible_signed_night_intervals": 95,
+            "missing_meter_value": 4,
+            "strict_main_window_blocks": 14,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          }
+        },
+        "interpretation": "Exposure/quality counts, not confirmed benign flow or leak labels. Causal-context-only exposure can include counter drops; weak pair-quality exposure separately excludes steps below the configured small-backstep bound. Negative deltas remain signed; no missing interval is imputed. Exposure reflects availability at each observation time; a later-known work order can subsequently invalidate retained decision windows. Exposure is neither a label nor a full replay of later evidence revision."
+      },
+      "rules": {
+        "baseline": {
+          "candidate_windows_by_path": {
+            "strong_room": 20
+          },
+          "episode_emissions_by_path": {
+            "strong_room": 1
+          },
+          "unique_episodes_by_path": {
+            "strong_room": 1
+          },
+          "bounded_emission_examples": {
+            "strong_room": [
+              {
+                "at_utc": "2026-01-13T00:00:00Z",
+                "asset": "R104",
+                "path": "strong_room",
+                "issue_type": "water_leak",
+                "action": "request_inspection",
+                "reason": "Vacant, observed-clean room has sustained night flow 25.9–29.2 L/15 min for 60 min. Possible leak; no recent cleaning or known flushing. Meter model and occupancy remain uncertain.",
+                "evidence": [
+                  "room_water.csv:R104:2026-01-12T23:00:00Z..2026-01-13T00:00:00Z",
+                  "room_telemetry.csv:R104:2026-01-12T23:00:00Z",
+                  "events.jsonl:E0000443:checkout:2026-01-12T08:45:00Z",
+                  "room_telemetry.csv:R104:2026-01-12T23:15:00Z",
+                  "events.jsonl:E0000443:checkout:2026-01-12T08:45:00Z",
+                  "room_telemetry.csv:R104:2026-01-12T23:30:00Z",
+                  "events.jsonl:E0000443:checkout:2026-01-12T08:45:00Z",
+                  "room_telemetry.csv:R104:2026-01-12T23:45:00Z"
+                ],
+                "episode_id": "episode:8fdcf27579284fed1c4a"
+              }
+            ]
+          },
+          "diagnostics": {
+            "detector": {
+              "ticks_processed": 2016,
+              "room_invalid_windows": 1950,
+              "main_blocked_room:R101": 34,
+              "main_blocked_room:R102": 14,
+              "main_blocked_room:R103": 29,
+              "main_blocked_room:R104": 24,
+              "main_blocked_room:R105": 29,
+              "main_blocked_room:R106": 29,
+              "main_blocked_room:R107": 19,
+              "main_blocked_room:R108": 24,
+              "main_blocked_room:R109": 14,
+              "main_blocked_room:R110": 14,
+              "main_blocked_room:R201": 19,
+              "main_blocked_room:R202": 9,
+              "main_blocked_room:R203": 44,
+              "main_blocked_room:R204": 9,
+              "main_blocked_room:R205": 29,
+              "main_blocked_room:R206": 24,
+              "main_blocked_room:R207": 9,
+              "main_blocked_room:R208": 14,
+              "main_blocked_room:R209": 29,
+              "main_blocked_room:R210": 39,
+              "main_blocked_room:R301": 58,
+              "main_blocked_room:R302": 53,
+              "main_blocked_room:R303": 48,
+              "main_blocked_room:R304": 53,
+              "main_blocked_room:R305": 53,
+              "main_blocked_room:R306": 48,
+              "main_blocked_room:R307": 48,
+              "main_blocked_room:R308": 38,
+              "main_blocked_room:R309": 70,
+              "main_blocked_room:R310": 48,
+              "main_blocked_room:R401": 29,
+              "main_blocked_room:R402": 29,
+              "main_blocked_room:R403": 737,
+              "main_blocked_room:R404": 39,
+              "main_blocked_room:R405": 34,
+              "main_blocked_room:R406": 24,
+              "main_blocked_room:R407": 19,
+              "main_blocked_room:R408": 44,
+              "main_blocked_room:R409": 9,
+              "main_blocked_room:R410": 14,
+              "main_windows_evaluated": 2016,
+              "main_invalid_or_missing_windows": 1,
+              "main_incomplete_room_windows": 1144,
+              "main_complete_windows": 872,
+              "main_baseline_unavailable_windows": 24,
+              "low_rate_eligible_intervals": 6053
+            }
+          }
+        },
+        "candidate": {
+          "candidate_windows_by_path": {
+            "strong_room": 20
+          },
+          "episode_emissions_by_path": {
+            "strong_room": 1
+          },
+          "unique_episodes_by_path": {
+            "strong_room": 1
+          },
+          "bounded_emission_examples": {
+            "strong_room": [
+              {
+                "at_utc": "2026-01-13T00:00:00Z",
+                "asset": "R104",
+                "path": "strong_room",
+                "issue_type": "water_leak",
+                "action": "request_inspection",
+                "reason": "Vacant, observed-clean room has sustained night flow 25.9–29.2 L/15 min for 60 min. Possible leak; no recent cleaning or known flushing. Meter model and occupancy remain uncertain.",
+                "evidence": [
+                  "room_water.csv:R104:2026-01-12T23:00:00Z..2026-01-13T00:00:00Z",
+                  "room_telemetry.csv:R104:2026-01-12T23:00:00Z",
+                  "events.jsonl:E0000443:checkout:2026-01-12T08:45:00Z",
+                  "room_telemetry.csv:R104:2026-01-12T23:15:00Z",
+                  "events.jsonl:E0000443:checkout:2026-01-12T08:45:00Z",
+                  "room_telemetry.csv:R104:2026-01-12T23:30:00Z",
+                  "events.jsonl:E0000443:checkout:2026-01-12T08:45:00Z",
+                  "room_telemetry.csv:R104:2026-01-12T23:45:00Z"
+                ],
+                "episode_id": "episode:8fdcf27579284fed1c4a"
+              }
+            ]
+          },
+          "diagnostics": {
+            "detector": {
+              "ticks_processed": 2016,
+              "main_latest_blocked_room:R101": 13,
+              "room_invalid_windows": 1950,
+              "main_blocked_room:R101": 34,
+              "main_latest_blocked_room:R102": 5,
+              "main_blocked_room:R102": 14,
+              "main_latest_blocked_room:R103": 11,
+              "main_blocked_room:R103": 29,
+              "main_latest_blocked_room:R104": 9,
+              "main_blocked_room:R104": 24,
+              "main_latest_blocked_room:R105": 11,
+              "main_blocked_room:R105": 29,
+              "main_latest_blocked_room:R106": 11,
+              "main_blocked_room:R106": 29,
+              "main_latest_blocked_room:R107": 7,
+              "main_blocked_room:R107": 19,
+              "main_latest_blocked_room:R108": 9,
+              "main_blocked_room:R108": 24,
+              "main_latest_blocked_room:R109": 5,
+              "main_blocked_room:R109": 14,
+              "main_latest_blocked_room:R110": 5,
+              "main_blocked_room:R110": 14,
+              "main_latest_blocked_room:R201": 7,
+              "main_blocked_room:R201": 19,
+              "main_latest_blocked_room:R202": 3,
+              "main_blocked_room:R202": 9,
+              "main_latest_blocked_room:R203": 17,
+              "main_blocked_room:R203": 44,
+              "main_latest_blocked_room:R204": 3,
+              "main_blocked_room:R204": 9,
+              "main_latest_blocked_room:R205": 11,
+              "main_blocked_room:R205": 29,
+              "main_latest_blocked_room:R206": 9,
+              "main_blocked_room:R206": 24,
+              "main_latest_blocked_room:R207": 3,
+              "main_blocked_room:R207": 9,
+              "main_latest_blocked_room:R208": 5,
+              "main_blocked_room:R208": 14,
+              "main_latest_blocked_room:R209": 11,
+              "main_blocked_room:R209": 29,
+              "main_latest_blocked_room:R210": 15,
+              "main_blocked_room:R210": 39,
+              "main_latest_blocked_room:R301": 34,
+              "main_blocked_room:R301": 58,
+              "main_latest_blocked_room:R302": 32,
+              "main_blocked_room:R302": 53,
+              "main_latest_blocked_room:R303": 30,
+              "main_blocked_room:R303": 48,
+              "main_latest_blocked_room:R304": 32,
+              "main_blocked_room:R304": 53,
+              "main_latest_blocked_room:R305": 32,
+              "main_blocked_room:R305": 53,
+              "main_latest_blocked_room:R306": 30,
+              "main_blocked_room:R306": 48,
+              "main_latest_blocked_room:R307": 30,
+              "main_blocked_room:R307": 48,
+              "main_latest_blocked_room:R308": 26,
+              "main_blocked_room:R308": 38,
+              "main_latest_blocked_room:R309": 40,
+              "main_blocked_room:R309": 70,
+              "main_latest_blocked_room:R310": 30,
+              "main_blocked_room:R310": 48,
+              "main_latest_blocked_room:R401": 11,
+              "main_blocked_room:R401": 29,
+              "main_latest_blocked_room:R402": 11,
+              "main_blocked_room:R402": 29,
+              "main_latest_blocked_room:R403": 347,
+              "main_blocked_room:R403": 737,
+              "main_latest_blocked_room:R404": 15,
+              "main_blocked_room:R404": 39,
+              "main_latest_blocked_room:R405": 13,
+              "main_blocked_room:R405": 34,
+              "main_latest_blocked_room:R406": 9,
+              "main_blocked_room:R406": 24,
+              "main_latest_blocked_room:R407": 7,
+              "main_blocked_room:R407": 19,
+              "main_latest_blocked_room:R408": 17,
+              "main_blocked_room:R408": 44,
+              "main_latest_blocked_room:R409": 3,
+              "main_blocked_room:R409": 9,
+              "main_latest_blocked_room:R410": 5,
+              "main_blocked_room:R410": 14,
+              "main_windows_evaluated": 2016,
+              "main_invalid_or_missing_windows": 1,
+              "main_incomplete_room_windows": 1144,
+              "main_invalid_or_missing_intervals": 1,
+              "main_incomplete_room_intervals": 601,
+              "persistent:observations": 80640,
+              "persistent:pair_invalid": 586,
+              "persistent:missing_or_invalid_pair": 586,
+              "main_complete_intervals": 1415,
+              "main_baseline_unavailable_windows": 28,
+              "persistent:ineligible_intervals": 73996,
+              "main_complete_windows": 872,
+              "low_rate_eligible_intervals": 6053,
+              "persistent:eligible_intervals": 6058,
+              "persistent:history_incomplete": 4043,
+              "persistent:net_rate_outside_weak_band": 2015,
+              "persistent:operation_invalidation_calls": 6,
+              "persistent:large_counter_reversals": 232
+            },
+            "weak": {
+              "observations": 80640,
+              "pair_invalid": 586,
+              "missing_or_invalid_pair": 586,
+              "ineligible_intervals": 73996,
+              "eligible_intervals": 6058,
+              "history_incomplete": 4043,
+              "net_rate_outside_weak_band": 2015,
+              "operation_invalidation_calls": 6,
+              "large_counter_reversals": 232
+            }
+          }
+        }
+      },
+      "paired_comparison": {
+        "added_candidate_windows": 0,
+        "removed_candidate_windows": 0,
+        "added_emission_windows": 0,
+        "removed_emission_windows": 0,
+        "added_emission_examples": [],
+        "removed_emission_examples": [],
+        "interpretation": "Changes in review burden/availability, not true/false positives or labelled recall. Episode timing can shift when a new earlier path opens the same asset episode."
+      },
+      "dataset": {
+        "profile": "quickstart",
+        "start_utc": "2026-01-05T00:00:00Z",
+        "end_utc": "2026-01-26T00:00:00Z",
+        "days": 21,
+        "interval_seconds": 900
+      },
+      "source_sha256": {
+        "manifest.json": "fe07a0995a5b596cda8e05e87446abb360452ae2f375a260eeb050d456274d44",
+        "building.json": "2f58f307c7c0c85628720f5b73777efa10833ea2e0c88711befc2db96f3cbe17",
+        "room_water.csv": "fe7cbbfe5920c82b6533547e4248600a74e5626c6746aebe7c2ba98a5d1bdb3c",
+        "water_main.csv": "f03fd5b462d498c238afe02de1565843447e9ead17e551c539f34a672f656d55",
+        "room_telemetry.csv": "19c4a8bd0c1b9f6f36ec1091776a08596b778e5057ed88d70cf3a57b20516e3d",
+        "events.jsonl": "96754ab1ee4505a71bbc791888df03c6a539168d1202f8b701515614a6c0776f",
+        "work_orders.csv": "836b7859b1eb0dce599ddea281aede5d02b73957718b2d6ec00cace4911284e3"
+      },
+      "rule_provenance": {
+        "baseline_commit": "3ab9541a02ce72ef8b3c70d27fdf2868e94dc6c4",
+        "baseline_water_source_sha256": "aba482ff0ef8cc6be79dde507cac67d29994a3ad3db698fcfe7ff871b66de100",
+        "candidate_water_source_sha256": "6b701c8dfd03cfece80afe173a2c644ce90b1d7d2d600f4c2041815e714b70aa",
+        "candidate_detector_sources_sha256": {
+          "__init__.py": "3ff5c7b5dedb0ba82254a7f88376e6241b79a854134fbe06a2656fb1945d9fdd",
+          "energy.py": "2161f59c4f249e98be818bc23f6056eabd67160cb28411e8578046a6dc826eb4",
+          "logistics.py": "e62f14ea9a6824b8a881158ce1443a7924bf140e0e5a3cc1fb2cba8aaa4d1c4f",
+          "maintenance.py": "d0623cedc09eb506c47b418029286126e812b046c594fad260761aa7b671171d",
+          "optimization.py": "c4ce34e61885668882c9b8a3503273b4d188449a3773e9a77ba4f7c0960943ec",
+          "surge.py": "b5a0a9220e860e6d0acbb5207630ce0ab0970fe3880f8ce5e81007fca1ded0a1",
+          "turnaround.py": "bff8912a43743a039c524d1eaf354038d8dab5d014af50a6679eaa95bd1e3916",
+          "water.py": "6b701c8dfd03cfece80afe173a2c644ce90b1d7d2d600f4c2041815e714b70aa",
+          "weak_water.py": "8c0c527e1b8220a9b96938825d9857c4422ea8e6eb5c74f73f7921f72c648aa3"
+        },
+        "config_source_sha256": "5d69dc0aaa80ea6a6443b4f863c38178917d55586b623d6964f83c445926779a",
+        "shared_episode_tracker_source_sha256": "86c5ea785d1982861f624eff0af965a17cd42fe99fd7baf8a7d25b677a8b8b11",
+        "shared_planner_source_sha256": "558d0541fcd57e58c53b9c79d630e57cab0971e9b3b7859c7a61ad5c2aa00520",
+        "event_time_policy": "equal-availability facts before clock scans; no future context"
+      },
+      "ingestion_audit": {
+        "room_water.csv:rows_read": 80640,
+        "room_water.csv:duplicates_dropped": 0,
+        "water_main.csv:rows_read": 2016,
+        "water_main.csv:duplicates_dropped": 0,
+        "room_telemetry.csv:rows_read": 80642,
+        "room_telemetry.csv:duplicates_dropped": 2
+      }
+    },
+    {
+      "ticks_evaluated": 35040,
+      "last_tick_utc": "2026-12-31T23:45:00Z",
+      "partial_run": false,
+      "elapsed_seconds": 113.77974645899667,
+      "config": {
+        "cleaning_minutes": 45,
+        "inspection_minutes": 15,
+        "telemetry_max_age_minutes": 30,
+        "water_window_minutes": 60,
+        "water_min_l_per_interval": 3.0,
+        "water_low_window_minutes": 180,
+        "water_weak_persistent_window_minutes": 240,
+        "water_weak_max_backstep_l": 0.5,
+        "water_low_min_l_per_interval": 1.0,
+        "water_low_baseline_min_intervals": 12,
+        "water_max_l_per_interval": 100.0,
+        "main_residual_min_l_per_interval": 120.0,
+        "cold_window_minutes": 30,
+        "comfort_recovery_margin_c": 0.25,
+        "cold_forecast_c": 0.0,
+        "low_cop": 1.7,
+        "filter_dp_pa": 250,
+        "ahu_flow_fraction": 0.75,
+        "technician_minutes": 60,
+        "robot_minutes": 20,
+        "surge_arrival_fraction": 0.4,
+        "surge_occupancy_fraction": 0.8,
+        "waste_trigger_pct": 80,
+        "container_max_fill_pct": 95,
+        "vending_low_fraction": 0.2,
+        "battery_price_spread": 0.08
+      },
+      "exposure": {
+        "counts": {
+          "ticks": 35040,
+          "room_tick_opportunities": 1401600,
+          "room_insufficient_pair": 40,
+          "main_insufficient_pair": 1,
+          "main_latest_pair_complete_ticks": 22969,
+          "main_strict_1h_complete_ticks": 12356,
+          "main_latest_pair_available_but_1h_blocked_ticks": 10613,
+          "room_nonnegative_pair": 1385259,
+          "room_missing_meter_value": 8198,
+          "main_nonnegative_pair": 35039,
+          "causally_eligible_signed_night_intervals": 102013,
+          "weak_pair_quality_eligible_night_intervals": 101607,
+          "eligible_nonnegative_night_intervals": 101426,
+          "room_negative_delta": 8103,
+          "negative_step_le_0.5l": 2424,
+          "negative_step_gt100l": 2
+        },
+        "primary_eligibility_exclusions": {
+          "insufficient_pair": 40,
+          "occupied_or_unknown": 231018,
+          "missing_meter_value": 8198,
+          "day_or_night_boundary": 1060052,
+          "housekeeping_not_observed_clean": 279
+        },
+        "distributions": {
+          "all_signed_room_pairs": {
+            "count": 1393362,
+            "mean_l": 0.9918470576921303,
+            "min_l": -70141.7,
+            "max_l": 250.29999999998836,
+            "quantiles_0.1l_binned_within_plus_minus2000l": {
+              "p10": 0.0,
+              "p50": 0.0,
+              "p90": 0.0,
+              "p99": 45.9
+            },
+            "quantile_covered_count": 1393360,
+            "range_counts": {
+              "zero": 1251193,
+              "1_to_lt3": 52815,
+              "3_to_100": 65968,
+              "0.5_to_lt1": 12794,
+              "gt100": 440,
+              "negative": 8103,
+              "positive_lt0.5": 2049
+            },
+            "reporting_precision_note": "Range labels snap only positive 0.5/1/3/100 L thresholds within 1e-9 L; raw signed deltas, negative signs, detector inputs and extrema are unchanged."
+          },
+          "eligible_signed_night_intervals": {
+            "count": 102013,
+            "mean_l": 0.012392538205914997,
+            "min_l": -3.0,
+            "max_l": 30.0,
+            "quantiles_0.1l_binned_within_plus_minus2000l": {
+              "p10": 0.0,
+              "p50": 0.0,
+              "p90": 0.0,
+              "p99": 0.0
+            },
+            "quantile_covered_count": 102013,
+            "range_counts": {
+              "zero": 100599,
+              "3_to_100": 47,
+              "0.5_to_lt1": 176,
+              "1_to_lt3": 459,
+              "negative": 587,
+              "positive_lt0.5": 145
+            },
+            "reporting_precision_note": "Range labels snap only positive 0.5/1/3/100 L thresholds within 1e-9 L; raw signed deltas, negative signs, detector inputs and extrema are unchanged."
+          },
+          "main_minus_all_room_latest_interval_residual_liters": {
+            "count": 22969,
+            "mean_l": 3.7631111498100673,
+            "min_l": -5.099999999447846,
+            "max_l": 115.10000000020227,
+            "quantiles_0.1l_binned_within_plus_minus2000l": {
+              "p10": 0.0,
+              "p50": 3.6,
+              "p90": 7.1,
+              "p99": 11.3
+            },
+            "quantile_covered_count": 22969,
+            "range_counts": {
+              "zero": 2527,
+              "positive_lt0.5": 1566,
+              "negative": 2380,
+              "1_to_lt3": 3172,
+              "3_to_100": 13090,
+              "0.5_to_lt1": 188,
+              "gt100": 46
+            },
+            "reporting_precision_note": "Range labels snap only positive 0.5/1/3/100 L thresholds within 1e-9 L; raw signed deltas, negative signs, detector inputs and extrema are unchanged."
+          },
+          "night_signed_room_pairs": {
+            "count": 333310,
+            "mean_l": 0.31936785574990184,
+            "min_l": -3.0,
+            "max_l": 120.10000000000582,
+            "quantiles_0.1l_binned_within_plus_minus2000l": {
+              "p10": 0.0,
+              "p50": 0.0,
+              "p90": 0.0,
+              "p99": 6.0
+            },
+            "quantile_covered_count": 333310,
+            "range_counts": {
+              "zero": 319544,
+              "1_to_lt3": 3826,
+              "3_to_100": 6258,
+              "0.5_to_lt1": 1112,
+              "gt100": 27,
+              "negative": 2039,
+              "positive_lt0.5": 504
+            },
+            "reporting_precision_note": "Range labels snap only positive 0.5/1/3/100 L thresholds within 1e-9 L; raw signed deltas, negative signs, detector inputs and extrema are unchanged."
+          },
+          "observed_vacant_night_pairs_before_operation_exclusions": {
+            "count": 102292,
+            "mean_l": 0.012358737731200942,
+            "min_l": -3.0,
+            "max_l": 30.0,
+            "quantiles_0.1l_binned_within_plus_minus2000l": {
+              "p10": 0.0,
+              "p50": 0.0,
+              "p90": 0.0,
+              "p99": 0.0
+            },
+            "quantile_covered_count": 102292,
+            "range_counts": {
+              "zero": 100878,
+              "3_to_100": 47,
+              "0.5_to_lt1": 176,
+              "1_to_lt3": 459,
+              "negative": 587,
+              "positive_lt0.5": 145
+            },
+            "reporting_precision_note": "Range labels snap only positive 0.5/1/3/100 L thresholds within 1e-9 L; raw signed deltas, negative signs, detector inputs and extrema are unchanged."
+          }
+        },
+        "per_room": {
+          "R101": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34857,
+            "missing_meter_value": 182,
+            "causally_eligible_signed_night_intervals": 2305,
+            "strict_main_window_blocks": 404,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R102": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34876,
+            "missing_meter_value": 163,
+            "causally_eligible_signed_night_intervals": 2678,
+            "strict_main_window_blocks": 362,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R103": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34874,
+            "missing_meter_value": 165,
+            "causally_eligible_signed_night_intervals": 2430,
+            "strict_main_window_blocks": 367,
+            "longest_eligible_run_intervals": 27,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R104": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34848,
+            "causally_eligible_signed_night_intervals": 2803,
+            "missing_meter_value": 191,
+            "strict_main_window_blocks": 431,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R105": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 27275,
+            "causally_eligible_signed_night_intervals": 2760,
+            "missing_meter_value": 165,
+            "negative_delta": 7599,
+            "strict_main_window_blocks": 16761,
+            "longest_eligible_run_intervals": 27,
+            "longest_positive_1_to_lt3l_run_intervals": 2
+          },
+          "R106": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34861,
+            "causally_eligible_signed_night_intervals": 2552,
+            "missing_meter_value": 178,
+            "strict_main_window_blocks": 398,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R107": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34857,
+            "missing_meter_value": 182,
+            "causally_eligible_signed_night_intervals": 2486,
+            "strict_main_window_blocks": 405,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R108": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34874,
+            "missing_meter_value": 165,
+            "causally_eligible_signed_night_intervals": 2779,
+            "strict_main_window_blocks": 367,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R109": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34864,
+            "causally_eligible_signed_night_intervals": 2660,
+            "missing_meter_value": 175,
+            "strict_main_window_blocks": 392,
+            "longest_eligible_run_intervals": 27,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R110": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34832,
+            "missing_meter_value": 207,
+            "causally_eligible_signed_night_intervals": 2764,
+            "strict_main_window_blocks": 467,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R201": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34919,
+            "missing_meter_value": 120,
+            "causally_eligible_signed_night_intervals": 2683,
+            "strict_main_window_blocks": 303,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R202": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34879,
+            "missing_meter_value": 160,
+            "causally_eligible_signed_night_intervals": 2633,
+            "strict_main_window_blocks": 400,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R203": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34923,
+            "causally_eligible_signed_night_intervals": 2562,
+            "missing_meter_value": 116,
+            "strict_main_window_blocks": 291,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R204": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34907,
+            "missing_meter_value": 132,
+            "causally_eligible_signed_night_intervals": 2365,
+            "strict_main_window_blocks": 334,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R205": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34883,
+            "causally_eligible_signed_night_intervals": 2763,
+            "missing_meter_value": 156,
+            "strict_main_window_blocks": 394,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R206": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34903,
+            "causally_eligible_signed_night_intervals": 2676,
+            "missing_meter_value": 136,
+            "strict_main_window_blocks": 344,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R207": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34887,
+            "missing_meter_value": 152,
+            "causally_eligible_signed_night_intervals": 2681,
+            "strict_main_window_blocks": 384,
+            "longest_eligible_run_intervals": 27,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R208": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34900,
+            "missing_meter_value": 139,
+            "causally_eligible_signed_night_intervals": 2339,
+            "strict_main_window_blocks": 350,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 23
+          },
+          "R209": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34895,
+            "missing_meter_value": 144,
+            "causally_eligible_signed_night_intervals": 2543,
+            "strict_main_window_blocks": 364,
+            "longest_eligible_run_intervals": 27,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R210": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34871,
+            "causally_eligible_signed_night_intervals": 2312,
+            "missing_meter_value": 168,
+            "strict_main_window_blocks": 424,
+            "longest_eligible_run_intervals": 27,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R301": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34677,
+            "missing_meter_value": 362,
+            "causally_eligible_signed_night_intervals": 2684,
+            "strict_main_window_blocks": 608,
+            "longest_eligible_run_intervals": 27,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R302": {
+            "insufficient_pair": 1,
+            "missing_meter_value": 356,
+            "nonnegative_pair": 34683,
+            "causally_eligible_signed_night_intervals": 2727,
+            "strict_main_window_blocks": 584,
+            "longest_eligible_run_intervals": 27,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R303": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34687,
+            "causally_eligible_signed_night_intervals": 2791,
+            "missing_meter_value": 352,
+            "strict_main_window_blocks": 581,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R304": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34679,
+            "missing_meter_value": 360,
+            "causally_eligible_signed_night_intervals": 2408,
+            "strict_main_window_blocks": 602,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R305": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34659,
+            "missing_meter_value": 380,
+            "causally_eligible_signed_night_intervals": 2329,
+            "strict_main_window_blocks": 652,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R306": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34686,
+            "causally_eligible_signed_night_intervals": 2621,
+            "missing_meter_value": 353,
+            "strict_main_window_blocks": 585,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R307": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34705,
+            "causally_eligible_signed_night_intervals": 2408,
+            "missing_meter_value": 334,
+            "strict_main_window_blocks": 539,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R308": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34681,
+            "causally_eligible_signed_night_intervals": 2172,
+            "missing_meter_value": 358,
+            "strict_main_window_blocks": 599,
+            "longest_eligible_run_intervals": 27,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R309": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34685,
+            "missing_meter_value": 354,
+            "causally_eligible_signed_night_intervals": 2897,
+            "strict_main_window_blocks": 589,
+            "longest_eligible_run_intervals": 27,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R310": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34653,
+            "causally_eligible_signed_night_intervals": 2611,
+            "missing_meter_value": 386,
+            "strict_main_window_blocks": 666,
+            "longest_eligible_run_intervals": 27,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R401": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34913,
+            "causally_eligible_signed_night_intervals": 2564,
+            "missing_meter_value": 126,
+            "strict_main_window_blocks": 319,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R402": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34911,
+            "missing_meter_value": 128,
+            "causally_eligible_signed_night_intervals": 2637,
+            "strict_main_window_blocks": 324,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R403": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34909,
+            "causally_eligible_signed_night_intervals": 2680,
+            "missing_meter_value": 130,
+            "strict_main_window_blocks": 326,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 19
+          },
+          "R404": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34903,
+            "missing_meter_value": 136,
+            "causally_eligible_signed_night_intervals": 2467,
+            "strict_main_window_blocks": 342,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R405": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34389,
+            "missing_meter_value": 146,
+            "causally_eligible_signed_night_intervals": 2416,
+            "negative_delta": 504,
+            "strict_main_window_blocks": 1469,
+            "longest_eligible_run_intervals": 27,
+            "longest_positive_1_to_lt3l_run_intervals": 1
+          },
+          "R406": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34882,
+            "missing_meter_value": 157,
+            "causally_eligible_signed_night_intervals": 2610,
+            "strict_main_window_blocks": 395,
+            "longest_eligible_run_intervals": 27,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R407": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34875,
+            "causally_eligible_signed_night_intervals": 2333,
+            "missing_meter_value": 164,
+            "strict_main_window_blocks": 413,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R408": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34913,
+            "missing_meter_value": 126,
+            "causally_eligible_signed_night_intervals": 2184,
+            "strict_main_window_blocks": 319,
+            "longest_eligible_run_intervals": 27,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R409": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34899,
+            "missing_meter_value": 140,
+            "causally_eligible_signed_night_intervals": 2273,
+            "strict_main_window_blocks": 354,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          },
+          "R410": {
+            "insufficient_pair": 1,
+            "nonnegative_pair": 34885,
+            "missing_meter_value": 154,
+            "causally_eligible_signed_night_intervals": 2427,
+            "strict_main_window_blocks": 389,
+            "longest_eligible_run_intervals": 23,
+            "longest_positive_1_to_lt3l_run_intervals": 0
+          }
+        },
+        "interpretation": "Exposure/quality counts, not confirmed benign flow or leak labels. Causal-context-only exposure can include counter drops; weak pair-quality exposure separately excludes steps below the configured small-backstep bound. Negative deltas remain signed; no missing interval is imputed. Exposure reflects availability at each observation time; a later-known work order can subsequently invalidate retained decision windows. Exposure is neither a label nor a full replay of later evidence revision."
+      },
+      "rules": {
+        "baseline": {
+          "candidate_windows_by_path": {
+            "strong_room": 40
+          },
+          "episode_emissions_by_path": {
+            "strong_room": 2
+          },
+          "unique_episodes_by_path": {
+            "strong_room": 2
+          },
+          "bounded_emission_examples": {
+            "strong_room": [
+              {
+                "at_utc": "2026-03-20T00:00:00Z",
+                "asset": "R201",
+                "path": "strong_room",
+                "issue_type": "water_leak",
+                "action": "request_inspection",
+                "reason": "Vacant, observed-clean room has sustained night flow 25.2–26.0 L/15 min for 60 min. Possible leak; no recent cleaning or known flushing. Meter model and occupancy remain uncertain.",
+                "evidence": [
+                  "room_water.csv:R201:2026-03-19T23:00:00Z..2026-03-20T00:00:00Z",
+                  "room_telemetry.csv:R201:2026-03-19T23:00:00Z",
+                  "events.jsonl:E0004227:checkout:2026-03-19T07:15:00Z",
+                  "room_telemetry.csv:R201:2026-03-19T23:15:00Z",
+                  "events.jsonl:E0004227:checkout:2026-03-19T07:15:00Z",
+                  "room_telemetry.csv:R201:2026-03-19T23:30:00Z",
+                  "events.jsonl:E0004227:checkout:2026-03-19T07:15:00Z",
+                  "room_telemetry.csv:R201:2026-03-19T23:45:00Z"
+                ],
+                "episode_id": "episode:83db0c467e85c2f80265"
+              },
+              {
+                "at_utc": "2026-08-16T23:00:00Z",
+                "asset": "R401",
+                "path": "strong_room",
+                "issue_type": "water_leak",
+                "action": "request_inspection",
+                "reason": "Vacant, observed-clean room has sustained night flow 18.5–21.3 L/15 min for 60 min. Possible leak; no recent cleaning or known flushing. Meter model and occupancy remain uncertain.",
+                "evidence": [
+                  "room_water.csv:R401:2026-08-16T22:00:00Z..2026-08-16T23:00:00Z",
+                  "room_telemetry.csv:R401:2026-08-16T22:00:00Z",
+                  "events.jsonl:E0014114:checkout:2026-08-16T04:30:00Z",
+                  "room_telemetry.csv:R401:2026-08-16T22:15:00Z",
+                  "events.jsonl:E0014114:checkout:2026-08-16T04:30:00Z",
+                  "room_telemetry.csv:R401:2026-08-16T22:30:00Z",
+                  "events.jsonl:E0014114:checkout:2026-08-16T04:30:00Z",
+                  "room_telemetry.csv:R401:2026-08-16T22:45:00Z"
+                ],
+                "episode_id": "episode:f1304c3c579d9ba82efd"
+              }
+            ]
+          },
+          "diagnostics": {
+            "detector": {
+              "ticks_processed": 35040,
+              "room_invalid_windows": 34597,
+              "main_blocked_room:R101": 404,
+              "main_blocked_room:R102": 362,
+              "main_blocked_room:R103": 367,
+              "main_blocked_room:R104": 431,
+              "main_blocked_room:R105": 16761,
+              "main_blocked_room:R106": 398,
+              "main_blocked_room:R107": 405,
+              "main_blocked_room:R108": 367,
+              "main_blocked_room:R109": 392,
+              "main_blocked_room:R110": 467,
+              "main_blocked_room:R201": 303,
+              "main_blocked_room:R202": 400,
+              "main_blocked_room:R203": 291,
+              "main_blocked_room:R204": 334,
+              "main_blocked_room:R205": 394,
+              "main_blocked_room:R206": 344,
+              "main_blocked_room:R207": 384,
+              "main_blocked_room:R208": 350,
+              "main_blocked_room:R209": 364,
+              "main_blocked_room:R210": 424,
+              "main_blocked_room:R301": 608,
+              "main_blocked_room:R302": 584,
+              "main_blocked_room:R303": 581,
+              "main_blocked_room:R304": 602,
+              "main_blocked_room:R305": 652,
+              "main_blocked_room:R306": 585,
+              "main_blocked_room:R307": 539,
+              "main_blocked_room:R308": 599,
+              "main_blocked_room:R309": 589,
+              "main_blocked_room:R310": 666,
+              "main_blocked_room:R401": 319,
+              "main_blocked_room:R402": 324,
+              "main_blocked_room:R403": 326,
+              "main_blocked_room:R404": 342,
+              "main_blocked_room:R405": 1469,
+              "main_blocked_room:R406": 395,
+              "main_blocked_room:R407": 413,
+              "main_blocked_room:R408": 319,
+              "main_blocked_room:R409": 354,
+              "main_blocked_room:R410": 389,
+              "main_windows_evaluated": 35040,
+              "main_invalid_or_missing_windows": 1,
+              "main_incomplete_room_windows": 22684,
+              "main_complete_windows": 12356,
+              "main_baseline_unavailable_windows": 350,
+              "low_rate_eligible_intervals": 101426,
+              "low_rate_candidate_windows": 37,
+              "low_rate_baseline_not_quiet_windows": 32,
+              "low_rate_baseline_unavailable_windows": 5,
+              "low_rate_no_baseline_room:R208": 5
+            }
+          }
+        },
+        "candidate": {
+          "candidate_windows_by_path": {
+            "strong_room": 40,
+            "persistent_weak": 56
+          },
+          "episode_emissions_by_path": {
+            "strong_room": 2,
+            "persistent_weak": 2
+          },
+          "unique_episodes_by_path": {
+            "strong_room": 2,
+            "persistent_weak": 2
+          },
+          "bounded_emission_examples": {
+            "strong_room": [
+              {
+                "at_utc": "2026-03-20T00:00:00Z",
+                "asset": "R201",
+                "path": "strong_room",
+                "issue_type": "water_leak",
+                "action": "request_inspection",
+                "reason": "Vacant, observed-clean room has sustained night flow 25.2–26.0 L/15 min for 60 min. Possible leak; no recent cleaning or known flushing. Meter model and occupancy remain uncertain.",
+                "evidence": [
+                  "room_water.csv:R201:2026-03-19T23:00:00Z..2026-03-20T00:00:00Z",
+                  "room_telemetry.csv:R201:2026-03-19T23:00:00Z",
+                  "events.jsonl:E0004227:checkout:2026-03-19T07:15:00Z",
+                  "room_telemetry.csv:R201:2026-03-19T23:15:00Z",
+                  "events.jsonl:E0004227:checkout:2026-03-19T07:15:00Z",
+                  "room_telemetry.csv:R201:2026-03-19T23:30:00Z",
+                  "events.jsonl:E0004227:checkout:2026-03-19T07:15:00Z",
+                  "room_telemetry.csv:R201:2026-03-19T23:45:00Z"
+                ],
+                "episode_id": "episode:83db0c467e85c2f80265"
+              },
+              {
+                "at_utc": "2026-08-16T23:00:00Z",
+                "asset": "R401",
+                "path": "strong_room",
+                "issue_type": "water_leak",
+                "action": "request_inspection",
+                "reason": "Vacant, observed-clean room has sustained night flow 18.5–21.3 L/15 min for 60 min. Possible leak; no recent cleaning or known flushing. Meter model and occupancy remain uncertain.",
+                "evidence": [
+                  "room_water.csv:R401:2026-08-16T22:00:00Z..2026-08-16T23:00:00Z",
+                  "room_telemetry.csv:R401:2026-08-16T22:00:00Z",
+                  "events.jsonl:E0014114:checkout:2026-08-16T04:30:00Z",
+                  "room_telemetry.csv:R401:2026-08-16T22:15:00Z",
+                  "events.jsonl:E0014114:checkout:2026-08-16T04:30:00Z",
+                  "room_telemetry.csv:R401:2026-08-16T22:30:00Z",
+                  "events.jsonl:E0014114:checkout:2026-08-16T04:30:00Z",
+                  "room_telemetry.csv:R401:2026-08-16T22:45:00Z"
+                ],
+                "episode_id": "episode:f1304c3c579d9ba82efd"
+              }
+            ],
+            "persistent_weak": [
+              {
+                "at_utc": "2026-06-24T02:00:00Z",
+                "asset": "R403",
+                "path": "persistent_weak",
+                "issue_type": "water_low_rate_review",
+                "action": "flag_anomaly",
+                "reason": "Persistent unexplained night counter increase in a historically verified vacant/clean room: signed endpoint net 16.10 L across 240 min (1.01 L/15 min), hourly net range 3.80–4.10 L, 0 bounded small counter reversals retained. No quiet prior baseline is assumed: an elevated historical rate is not proof of normality. This is an uncertain review candidate, not a confirmed leak; meter drift/bias, calibration, quantization and unrecorded activity can produce the same evidence.",
+                "evidence": [
+                  "room_water.csv:R403:2026-06-23T22:00:00Z..2026-06-24T02:00:00Z",
+                  "room_telemetry.csv:R403:2026-06-23T22:00:00Z",
+                  "events.jsonl:E0010203:checkout:2026-06-23T07:15:00Z",
+                  "room_telemetry.csv:R403:2026-06-23T22:15:00Z",
+                  "events.jsonl:R403:2026-06-23T20:15:00Z..2026-06-23T22:15:00Z (observed operation/lifecycle checks)",
+                  "room_telemetry.csv:R403:2026-06-23T22:30:00Z",
+                  "events.jsonl:R403:2026-06-23T20:30:00Z..2026-06-23T22:30:00Z (observed operation/lifecycle checks)",
+                  "room_telemetry.csv:R403:2026-06-23T22:45:00Z"
+                ],
+                "episode_id": "episode:9d6e4b0c39b31a27d85e"
+              },
+              {
+                "at_utc": "2026-11-14T03:00:00Z",
+                "asset": "R208",
+                "path": "persistent_weak",
+                "issue_type": "water_low_rate_review",
+                "action": "flag_anomaly",
+                "reason": "Persistent unexplained night counter increase in a historically verified vacant/clean room: signed endpoint net 17.30 L across 240 min (1.08 L/15 min), hourly net range 4.20–4.40 L, 0 bounded small counter reversals retained. No quiet prior baseline is assumed: an elevated historical rate is not proof of normality. This is an uncertain review candidate, not a confirmed leak; meter drift/bias, calibration, quantization and unrecorded activity can produce the same evidence.",
+                "evidence": [
+                  "room_water.csv:R208:2026-11-13T23:00:00Z..2026-11-14T03:00:00Z",
+                  "room_telemetry.csv:R208:2026-11-13T23:00:00Z",
+                  "events.jsonl:E0019855:checkout:2026-11-13T08:45:00Z",
+                  "room_telemetry.csv:R208:2026-11-13T23:15:00Z",
+                  "events.jsonl:R208:2026-11-13T21:15:00Z..2026-11-13T23:15:00Z (observed operation/lifecycle checks)",
+                  "room_telemetry.csv:R208:2026-11-13T23:30:00Z",
+                  "events.jsonl:R208:2026-11-13T21:30:00Z..2026-11-13T23:30:00Z (observed operation/lifecycle checks)",
+                  "room_telemetry.csv:R208:2026-11-13T23:45:00Z"
+                ],
+                "episode_id": "episode:ed601441f55dee220413"
+              }
+            ]
+          },
+          "diagnostics": {
+            "detector": {
+              "ticks_processed": 35040,
+              "main_latest_blocked_room:R101": 183,
+              "room_invalid_windows": 34597,
+              "main_blocked_room:R101": 404,
+              "main_latest_blocked_room:R102": 164,
+              "main_blocked_room:R102": 362,
+              "main_latest_blocked_room:R103": 166,
+              "main_blocked_room:R103": 367,
+              "main_latest_blocked_room:R104": 192,
+              "main_blocked_room:R104": 431,
+              "main_latest_blocked_room:R105": 7765,
+              "main_blocked_room:R105": 16761,
+              "main_latest_blocked_room:R106": 179,
+              "main_blocked_room:R106": 398,
+              "main_latest_blocked_room:R107": 183,
+              "main_blocked_room:R107": 405,
+              "main_latest_blocked_room:R108": 166,
+              "main_blocked_room:R108": 367,
+              "main_latest_blocked_room:R109": 176,
+              "main_blocked_room:R109": 392,
+              "main_latest_blocked_room:R110": 208,
+              "main_blocked_room:R110": 467,
+              "main_latest_blocked_room:R201": 121,
+              "main_blocked_room:R201": 303,
+              "main_latest_blocked_room:R202": 161,
+              "main_blocked_room:R202": 400,
+              "main_latest_blocked_room:R203": 117,
+              "main_blocked_room:R203": 291,
+              "main_latest_blocked_room:R204": 133,
+              "main_blocked_room:R204": 334,
+              "main_latest_blocked_room:R205": 157,
+              "main_blocked_room:R205": 394,
+              "main_latest_blocked_room:R206": 137,
+              "main_blocked_room:R206": 344,
+              "main_latest_blocked_room:R207": 153,
+              "main_blocked_room:R207": 384,
+              "main_latest_blocked_room:R208": 140,
+              "main_blocked_room:R208": 350,
+              "main_latest_blocked_room:R209": 145,
+              "main_blocked_room:R209": 364,
+              "main_latest_blocked_room:R210": 169,
+              "main_blocked_room:R210": 424,
+              "main_latest_blocked_room:R301": 363,
+              "main_blocked_room:R301": 608,
+              "main_latest_blocked_room:R302": 357,
+              "main_blocked_room:R302": 584,
+              "main_latest_blocked_room:R303": 353,
+              "main_blocked_room:R303": 581,
+              "main_latest_blocked_room:R304": 361,
+              "main_blocked_room:R304": 602,
+              "main_latest_blocked_room:R305": 381,
+              "main_blocked_room:R305": 652,
+              "main_latest_blocked_room:R306": 354,
+              "main_blocked_room:R306": 585,
+              "main_latest_blocked_room:R307": 335,
+              "main_blocked_room:R307": 539,
+              "main_latest_blocked_room:R308": 359,
+              "main_blocked_room:R308": 599,
+              "main_latest_blocked_room:R309": 355,
+              "main_blocked_room:R309": 589,
+              "main_latest_blocked_room:R310": 387,
+              "main_blocked_room:R310": 666,
+              "main_latest_blocked_room:R401": 127,
+              "main_blocked_room:R401": 319,
+              "main_latest_blocked_room:R402": 129,
+              "main_blocked_room:R402": 324,
+              "main_latest_blocked_room:R403": 131,
+              "main_blocked_room:R403": 326,
+              "main_latest_blocked_room:R404": 137,
+              "main_blocked_room:R404": 342,
+              "main_latest_blocked_room:R405": 651,
+              "main_blocked_room:R405": 1469,
+              "main_latest_blocked_room:R406": 158,
+              "main_blocked_room:R406": 395,
+              "main_latest_blocked_room:R407": 165,
+              "main_blocked_room:R407": 413,
+              "main_latest_blocked_room:R408": 127,
+              "main_blocked_room:R408": 319,
+              "main_latest_blocked_room:R409": 141,
+              "main_blocked_room:R409": 354,
+              "main_latest_blocked_room:R410": 155,
+              "main_blocked_room:R410": 389,
+              "main_windows_evaluated": 35040,
+              "main_invalid_or_missing_windows": 1,
+              "main_incomplete_room_windows": 22684,
+              "main_invalid_or_missing_intervals": 1,
+              "main_incomplete_room_intervals": 12071,
+              "persistent:observations": 1401600,
+              "persistent:pair_invalid": 8238,
+              "persistent:missing_or_invalid_pair": 8238,
+              "persistent:ineligible_intervals": 1291755,
+              "main_complete_intervals": 22969,
+              "main_baseline_unavailable_windows": 28,
+              "main_complete_windows": 12356,
+              "low_rate_eligible_intervals": 101426,
+              "persistent:eligible_intervals": 101607,
+              "persistent:history_incomplete": 67646,
+              "persistent:net_rate_outside_weak_band": 33905,
+              "persistent:operation_invalidation_calls": 40,
+              "persistent:review_windows": 56,
+              "low_rate_candidate_windows": 37,
+              "low_rate_baseline_not_quiet_windows": 32,
+              "persistent:large_counter_reversals": 5679,
+              "low_rate_baseline_unavailable_windows": 5,
+              "low_rate_no_baseline_room:R208": 5
+            },
+            "weak": {
+              "observations": 1401600,
+              "pair_invalid": 8238,
+              "missing_or_invalid_pair": 8238,
+              "ineligible_intervals": 1291755,
+              "eligible_intervals": 101607,
+              "history_incomplete": 67646,
+              "net_rate_outside_weak_band": 33905,
+              "operation_invalidation_calls": 40,
+              "review_windows": 56,
+              "large_counter_reversals": 5679
+            }
+          }
+        }
+      },
+      "paired_comparison": {
+        "added_candidate_windows": 56,
+        "removed_candidate_windows": 0,
+        "added_emission_windows": 2,
+        "removed_emission_windows": 0,
+        "added_emission_examples": [
+          [
+            "2026-06-24T02:00:00Z",
+            "water:R403",
+            "persistent_weak",
+            "flag_anomaly",
+            "initial"
+          ],
+          [
+            "2026-11-14T03:00:00Z",
+            "water:R208",
+            "persistent_weak",
+            "flag_anomaly",
+            "initial"
+          ]
+        ],
+        "removed_emission_examples": [],
+        "interpretation": "Changes in review burden/availability, not true/false positives or labelled recall. Episode timing can shift when a new earlier path opens the same asset episode."
+      },
+      "dataset": {
+        "profile": "dev",
+        "start_utc": "2026-01-01T00:00:00Z",
+        "end_utc": "2027-01-01T00:00:00Z",
+        "days": 365,
+        "interval_seconds": 900
+      },
+      "source_sha256": {
+        "manifest.json": "73fb3c10d9531c3a11d12e13116122a6b598ab05fc3b07cb438ef718ecebfde2",
+        "building.json": "671785fcc397b9f61811c4ae04cffdd49a5468621bf310f9424238512be397d3",
+        "room_water.csv": "009d42067301a01ca073228ceb307aa20eef58ab01861cd3ccf6e8fd2b41126b",
+        "water_main.csv": "0d34e062b480c7da26ce660a7dd95720a70a897534350902d3927dfb56c45835",
+        "room_telemetry.csv": "71278be6b629344f65e9bb469e39e7a061dd09d4028af524256f167ed7251ca8",
+        "events.jsonl": "217d6211d872a450c884a9e421f5a84d50539049fe3807921d7addb5eaf1fc9b",
+        "work_orders.csv": "adb38bc9202606d1cd690a2da86c3c4ae8da031118134f6222b90ffc51a6fd8a"
+      },
+      "rule_provenance": {
+        "baseline_commit": "3ab9541a02ce72ef8b3c70d27fdf2868e94dc6c4",
+        "baseline_water_source_sha256": "aba482ff0ef8cc6be79dde507cac67d29994a3ad3db698fcfe7ff871b66de100",
+        "candidate_water_source_sha256": "6b701c8dfd03cfece80afe173a2c644ce90b1d7d2d600f4c2041815e714b70aa",
+        "candidate_detector_sources_sha256": {
+          "__init__.py": "3ff5c7b5dedb0ba82254a7f88376e6241b79a854134fbe06a2656fb1945d9fdd",
+          "energy.py": "2161f59c4f249e98be818bc23f6056eabd67160cb28411e8578046a6dc826eb4",
+          "logistics.py": "e62f14ea9a6824b8a881158ce1443a7924bf140e0e5a3cc1fb2cba8aaa4d1c4f",
+          "maintenance.py": "d0623cedc09eb506c47b418029286126e812b046c594fad260761aa7b671171d",
+          "optimization.py": "c4ce34e61885668882c9b8a3503273b4d188449a3773e9a77ba4f7c0960943ec",
+          "surge.py": "b5a0a9220e860e6d0acbb5207630ce0ab0970fe3880f8ce5e81007fca1ded0a1",
+          "turnaround.py": "bff8912a43743a039c524d1eaf354038d8dab5d014af50a6679eaa95bd1e3916",
+          "water.py": "6b701c8dfd03cfece80afe173a2c644ce90b1d7d2d600f4c2041815e714b70aa",
+          "weak_water.py": "8c0c527e1b8220a9b96938825d9857c4422ea8e6eb5c74f73f7921f72c648aa3"
+        },
+        "config_source_sha256": "5d69dc0aaa80ea6a6443b4f863c38178917d55586b623d6964f83c445926779a",
+        "shared_episode_tracker_source_sha256": "86c5ea785d1982861f624eff0af965a17cd42fe99fd7baf8a7d25b677a8b8b11",
+        "shared_planner_source_sha256": "558d0541fcd57e58c53b9c79d630e57cab0971e9b3b7859c7a61ad5c2aa00520",
+        "event_time_policy": "equal-availability facts before clock scans; no future context"
+      },
+      "ingestion_audit": {
+        "room_water.csv:rows_read": 1401600,
+        "room_water.csv:duplicates_dropped": 0,
+        "water_main.csv:rows_read": 35040,
+        "water_main.csv:duplicates_dropped": 0,
+        "room_telemetry.csv:rows_read": 1401640,
+        "room_telemetry.csv:duplicates_dropped": 40
+      }
+    }
+  ]
+}

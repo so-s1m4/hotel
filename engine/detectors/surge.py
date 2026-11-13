@@ -82,6 +82,7 @@ class SurgeDetector:
 
         planning = deepcopy(calendar)
         ready_jobs = []
+        readiness_unknown = False
         for b in sorted(arrivals.values(), key=lambda x: (instant(x["arrival_utc"]), x["booking_id"])):
             room = b["room_id"]
             state = states[room]
@@ -91,6 +92,13 @@ class SurgeDetector:
             if (completion and stamp and instant(stamp) < instant(completion) <= instant(now)
                     and not (dirty_trigger and instant(completion) < instant(dirty_trigger) <= instant(now))):
                 continue  # newer actual human completion invalidates the old dirty reading
+            # Missing/stale readiness is inconclusive, not an observed recovery.
+            # Keep the completion exception above: actual work may supersede old telemetry.
+            if (not stamp
+                    or instant(stamp) < instant(ago(now, self.config.telemetry_max_age_minutes))
+                    or state.get("occupancy") not in {"vacant", "occupied"}
+                    or state.get("housekeeping_state") not in {"clean", "dirty", "in_progress", "inspection_required"}):
+                readiness_unknown = True
             if (state.get("occupancy") == "vacant" and state.get("housekeeping_state") == "dirty"
                     and state.get("last_observed_utc")
                     and instant(state["last_observed_utc"]) >= instant(ago(now, self.config.telemetry_max_age_minutes))):
@@ -116,6 +124,9 @@ class SurgeDetector:
                 a, z, resource, _ = choice
                 probe.reserve(resource, a, z, "probe:" + b["booking_id"], now, room=b["room_id"])
         if not demand or not (absence or capacity_short):
+            if demand and readiness_unknown:
+                self.healthy = 0
+                return result
             self.healthy += 1
             if self.healthy >= 3:
                 result.resolved.add("surge:BUILDING")
