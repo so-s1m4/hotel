@@ -81,3 +81,52 @@ separate from `payload.intents` (extraction). Without a model, or on any model e
 the intent is the dataset label with `needs_review=true`, no time is invented, and
 `extraction.method` is `source_label`/`fallback`. If the model's intents do not contain
 the dataset label, both are kept and `extraction.needs_review=true`.
+
+## Data-quality report (for insights, not for decisions)
+
+```bash
+python -m ingestion.quality --data-dir data/PLATO40_v2_dev --out outputs/quality_dev.json
+```
+
+A deterministic, retrospective whole-dataset report: duplicates, blank cells per column,
+communication-loss runs and floor-wide outages, frozen temperature sensors, implausible
+sentinel values, water-meter counter decreases matched against metering work orders. It
+is **not time-causal** and must never be used at replay time. Measured on the supplied
+data (synthetic, no real-world claims):
+
+| | Quickstart | Dev |
+|---|---:|---:|
+| duplicate telemetry rows dropped | 2 | 40 |
+| floor-wide sensor outages (all 10 rooms of a floor at once) | 2 (floor 3) | 14 (floor 3 dominant: 2,110 lost samples vs 360 on floor 1) |
+| frozen temperature runs (>= 3 h identical) | 1 | 6 |
+| implausible sentinel readings (e.g. 85.0 / -40.0 degC, CO2 0 / 10000 ppm) | 1 | 13 |
+| room water-meter counter decreases | 338 | 8,116 |
+| ... largest drop near a metering work order's completion (one per order, within 6 h; proximity match, not a confirmed exchange record) | 1 | 2 |
+| ... small (< 5 L) other decreases = reading jitter | 337 | 8,114 |
+
+Two things follow for consumers: a negative water delta is almost always jitter, not a
+meter exchange (only the multi-thousand-litre drops coincide with metering work orders), and a whole floor
+going blank at once points at the gateway, not at forty individual sensors.
+
+## Robustness to unseen input (holdout)
+
+- UTF-8 BOM, CRLF, quoted cells (embedded commas/newlines), reordered or extra columns.
+- Timestamps in other spellings (`+00:00`, lowercase `z`, local offsets) are converted to
+  UTC. For time-series files and `events.jsonl`, sub-second source instants are kept in
+  the returned rows/events, but their **availability key rounds up to the next full
+  second**, so a fact is never visible before its true instant (at most one second
+  late). Within one second events are ordered by `event_id`. Whole-second availability
+  is an implementation choice, not a contract requirement.
+- Accepted limitation: `*_utc` columns of the relational CSVs (bookings, roster, work
+  orders, guest requests, tariffs, forecasts) are rounded up to the whole second and the
+  original fraction is not retained. The supplied data has no fractional times.
+- A CSV header that lacks required columns is rejected (`inspect_dataset`, both CLIs).
+  A zero-byte file is treated as an empty stream and reported in the audit
+  (`<file>:empty_no_header`); a missing file as `<file>:missing`.
+- Rows without a usable timestamp are skipped and counted (`<file>:unparseable_rows`).
+- `manifest.interval_seconds` must be an integer 60..86400; anything else falls back to
+  900 s with a warning and `manifest:interval_seconds_invalid` in the audit.
+- Tariff revisions are kept: each query returns the latest price published by `as_of`.
+- `tests/ingestion/test_holdout_robustness.py` (65 fuzz cases from an independent review)
+  asserts these policies directly (audited interval fallback, diagnosed empty files,
+  preserved source precision).

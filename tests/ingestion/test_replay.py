@@ -487,3 +487,171 @@ def test_tiny_nulls_dedup_and_occupancy(tiny):
                       "meter_total_l": None}]
     assert tiny.get_room_state("R102", "2026-03-28T23:00:00Z")["last_observed_utc"] is None
     assert tiny.get_booking("BK1", "2026-03-29T00:00:00Z")["status"] == "unresolved"
+
+
+def test_french_est_is_not_a_timezone():
+    from ingestion import guest_parser as gp
+    from common.contracts.schemas import GuestIntentV1
+    text = "Un départ tardif à 13:00 est-il possible ?"
+    record = {"request_id": "GRX", "timestamp_utc": "2026-02-04T07:56:42Z", "language": "fr",
+              "request_type": "late_checkout", "text": text}
+    safe = {"booking": {"departure_utc": "2026-02-05T10:00:00Z"}}
+    item = GuestIntentV1(intent="late_checkout", requested_time_text="13:00",
+                         evidence_quote="Un départ tardif à 13:00")
+    assert gp._resolve_time(item, record, safe) == ("2026-02-05T12:00:00Z", False)
+    est = dict(record, text="Late checkout at 13:00 EST possible?", language="en")
+    item = GuestIntentV1(intent="late_checkout", requested_time_text="13:00",
+                         evidence_quote="Late checkout at 13:00 EST")
+    assert gp._resolve_time(item, est, safe)[0] is None  # a real foreign zone stays unresolved
+
+
+def test_loader_tolerates_bom_crlf_quotes_and_odd_timestamps(tmp_path):
+    d = tmp_path / "odd"
+    d.mkdir()
+    (d / "manifest.json").write_text("﻿" + json.dumps({
+        "start_utc": "2026-01-05T00:00:00Z", "end_utc": "2026-01-05T01:00:00Z"}), encoding="utf-8")
+    (d / "building.json").write_text(json.dumps({"building": {"rooms": [{"id": "R101"}]}}))
+    # BOM, CRLF, reordered + extra column, quoted cell, mixed timestamp spellings, unsorted
+    (d / "room_telemetry.csv").write_bytes((
+        "﻿room_id,timestamp_utc,temperature_c,note,housekeeping_state\r\n"
+        'R101,2026-01-05T00:30:00+00:00,20.5,"a, b",clean\r\n'
+        "R101,2026-01-05T00:15:00.250Z,20.0,,dirty\r\n"
+        "R101,2026-01-05t00:00:00z,19.5,,dirty\r\n"
+        "R101,2026-01-05T01:45:00+01:00,21.0,,clean\r\n"
+        "R101,not-a-time,1,,clean\r\n").encode("utf-8"))
+    (d / "bookings.csv").write_bytes((
+        "﻿booking_id,room_id,created_utc,arrival_utc,departure_utc,guest_count,channel,status\r\n"
+        "BK1,R101,2026-01-01T00:00:00+00:00,2026-01-05T14:00:00.000Z,2026-01-06T10:00:00Z,1,ota,confirmed\r\n"
+    ).encode("utf-8"))
+    repo = ReplayData(d, use_llm=False)
+    rows = repo.get_measurements("room_telemetry.csv", "2026-01-05T00:00:00Z",
+                                 "2026-01-05T02:00:00Z", "2026-01-05T02:00:00Z", "R101")
+    assert [r["timestamp_utc"] for r in rows] == [
+        "2026-01-05T00:00:00Z", "2026-01-05T00:15:00.25Z", "2026-01-05T00:30:00Z",
+        "2026-01-05T00:45:00Z"]  # source precision kept; lookup key rounds UP
+    assert repo.get_room_state("R101", "2026-01-05T00:15:00Z")["last_observed_utc"] == \
+        "2026-01-05T00:00:00Z"   # the .250 reading is not visible at :00
+    assert rows[2]["note"] == "a, b" and rows[2]["temperature_c"] == 20.5
+    assert repo.audit["room_telemetry.csv:unparseable_rows"] == 1
+    st = repo.get_room_state("R101", "2026-01-05T00:20:00Z")
+    assert st["last_observed_utc"] == "2026-01-05T00:15:00.25Z" and st["housekeeping_state"] == "dirty"
+    bk = repo.get_booking("BK1", "2026-01-02T00:00:00Z")
+    assert bk["created_utc"] == "2026-01-01T00:00:00Z" and bk["arrival_utc"] == "2026-01-05T14:00:00Z"
+    assert len(list(repo.iter_events())) == 4 + 1
+
+
+def test_subsecond_facts_are_never_visible_early(tmp_path):
+    d = tmp_path / "sub"
+    d.mkdir()
+    (d / "manifest.json").write_text(json.dumps({
+        "start_utc": "2026-01-05T00:00:00Z", "end_utc": "2026-01-05T01:00:00Z",
+        "interval_seconds": 900}))
+    (d / "building.json").write_text(json.dumps({"building": {"rooms": [{"id": "R101"}]}}))
+    (d / "room_telemetry.csv").write_text(
+        "timestamp_utc,room_id,temperature_c\n2026-01-05T00:15:00.500Z,R101,20.0\n")
+    (d / "events.jsonl").write_text(
+        '{"event_id":"E1","timestamp_utc":"2026-01-05T00:15:00.500Z","type":"checkin",'
+        '"room_id":"R101","booking_id":"BK1","guests":1}\n')
+    (d / "bookings.csv").write_text(
+        "booking_id,room_id,created_utc,arrival_utc,departure_utc,guest_count,channel,status\n"
+        "BK1,R101,2026-01-05T00:15:00.500Z,2026-01-05T14:00:00Z,2026-01-06T10:00:00Z,1,ota,confirmed\n")
+    (d / "tariff.csv").write_text(
+        "timestamp_utc,price_eur_kwh,published_utc\n"
+        "2026-01-05T01:00:00Z,0.30,2026-01-05T00:30:00Z\n"      # later revision listed first
+        "2026-01-05T01:00:00Z,0.20,2026-01-05T00:00:00Z\n")
+    repo = ReplayData(d, use_llm=False)
+    at, after = "2026-01-05T00:15:00Z", "2026-01-05T00:15:01Z"
+    assert repo.get_room_state("R101", at)["last_observed_utc"] is None
+    assert repo.get_room_state("R101", after)["temperature_c"] == 20.0
+    assert repo.get_events(at, after, at) == [] and len(repo.get_events(at, after, after)) == 1
+    assert repo.get_booking("BK1", at) is None and repo.get_booking("BK1", after) is not None
+    # as-of bounds with a fraction round DOWN
+    assert repo.get_room_state("R101", "2026-01-05T00:15:00.900Z")["last_observed_utc"] is None
+    ev = next(e for e in repo.iter_events() if e.event_id == "raw:E1")
+    assert ev.available_at_utc == after
+    # tariff revisions: the earlier-published price is known first, the revision later
+    early = repo.get_tariffs("2026-01-05T00:10:00Z", "2026-01-05T02:00:00Z")
+    late = repo.get_tariffs("2026-01-05T00:30:00Z", "2026-01-05T02:00:00Z")
+    assert [r["price_eur_kwh"] for r in early] == [0.20]
+    assert [r["price_eur_kwh"] for r in late] == [0.30]
+
+
+@pytest.mark.parametrize("bad", [-900, "0", 0.5, 0, True, None, "900", 10**9])
+def test_invalid_manifest_interval_falls_back(tmp_path, bad):
+    d = tmp_path / "iv"
+    d.mkdir()
+    (d / "manifest.json").write_text(json.dumps({
+        "start_utc": "2026-01-05T00:00:00Z", "end_utc": "2026-01-05T01:00:00Z",
+        "interval_seconds": bad}))
+    (d / "building.json").write_text(json.dumps({"building": {"rooms": []}}))
+    ticks = [e for e in ReplayData(d, use_llm=False).iter_events() if e.event_type == "clock_tick"]
+    assert len(ticks) == 4 and ticks[0].payload["interval_seconds"] == 900
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_latest_reading_within_one_second_is_by_source_instant(tmp_path, reverse):
+    d = tmp_path / "bucket"
+    d.mkdir()
+    (d / "manifest.json").write_text(json.dumps({
+        "start_utc": "2026-01-05T00:00:00Z", "end_utc": "2026-01-05T01:00:00Z"}))
+    (d / "building.json").write_text(json.dumps({"building": {"rooms": [{"id": "R101"}]}}))
+    rows = ["2026-01-05T00:15:00.100Z,R101,21.0\n", "2026-01-05T00:15:00.900Z,R101,22.0\n"]
+    (d / "room_telemetry.csv").write_text(
+        "timestamp_utc,room_id,temperature_c\n" + "".join(reversed(rows) if reverse else rows))
+    repo = ReplayData(d, use_llm=False)
+    assert repo.get_room_state("R101", "2026-01-05T00:15:00Z")["temperature_c"] is None
+    state = repo.get_room_state("R101", "2026-01-05T00:15:01Z")
+    assert state["temperature_c"] == 22.0 and state["last_observed_utc"].endswith("00.9Z")
+    both = repo.get_measurements("room_telemetry.csv", "2026-01-05T00:00:00Z",
+                                 "2026-01-05T01:00:00Z", "2026-01-05T01:00:00Z", "R101")
+    assert [r["temperature_c"] for r in both] == [21.0, 22.0]
+
+
+@pytest.mark.parametrize("order", [(0, 1, 2), (2, 0, 1), (1, 2, 0), (2, 1, 0)])
+def test_mixed_fractional_and_exact_rows_survive_any_file_order(tmp_path, order):
+    d = tmp_path / "mix"
+    d.mkdir()
+    (d / "manifest.json").write_text(json.dumps({
+        "start_utc": "2026-01-05T00:00:00Z", "end_utc": "2026-01-05T01:00:00Z"}))
+    (d / "building.json").write_text(json.dumps({"building": {"rooms": [{"id": "R101"}]}}))
+    rows = ["2026-01-05T00:15:00.5Z,R101,20.0\n", "2026-01-05T00:15:00.15Z,R101,19.0\n",
+            "2026-01-05T00:15:01Z,R101,22.0\n"]
+    (d / "room_telemetry.csv").write_text(
+        "timestamp_utc,room_id,temperature_c\n" + "".join(rows[i] for i in order))
+    repo = ReplayData(d, use_llm=False)
+    got = repo.get_measurements("room_telemetry.csv", "2026-01-05T00:00:00Z",
+                                "2026-01-05T01:00:00Z", "2026-01-05T01:00:00Z", "R101")
+    assert [r["temperature_c"] for r in got] == [19.0, 20.0, 22.0]   # true chronological order
+    assert repo.get_room_state("R101", "2026-01-05T00:15:01Z")["temperature_c"] == 22.0
+    assert repo.get_room_state("R101", "2026-01-05T00:15:00Z")["temperature_c"] is None
+
+
+def test_blank_guest_room_is_derived_from_known_booking_and_raw_keys_cannot_pose(tmp_path):
+    d = tmp_path / "blank"
+    d.mkdir()
+    (d / "manifest.json").write_text(json.dumps({
+        "start_utc": "2026-01-05T00:00:00Z", "end_utc": "2026-01-05T02:00:00Z"}))
+    (d / "building.json").write_text(json.dumps(
+        {"building": {"rooms": [{"id": "R101"}, {"id": "R102"}]}}))
+    (d / "bookings.csv").write_text(
+        "booking_id,room_id,created_utc,arrival_utc,departure_utc,guest_count,channel,status\n"
+        "B1,R101,2026-01-01T00:00:00Z,2026-01-05T14:00:00Z,2026-01-06T10:00:00Z,1,ota,confirmed\n")
+    (d / "events.jsonl").write_text(
+        '{"event_id":"E1","timestamp_utc":"2026-01-05T00:30:00Z","type":"room_reassigned",'
+        '"booking_id":"B1","from_room":"R101","to_room":"R102"}\n'
+        '{"event_id":"E2","timestamp_utc":"2026-01-05T00:40:00Z","type":"bms_alarm",'
+        '"asset_id":"R101","intents":null,"request_type":[]}\n')
+    (d / "guest_requests.csv").write_text(
+        "request_id,timestamp_utc,room_id,booking_id,channel,language,request_type,text,"
+        "priority,response_due_utc,requires_guest_consent\n"
+        "G1,2026-01-05T00:15:00Z,,B1,app,en,wifi_help,wifi?,low,,not_required\n"
+        "G2,2026-01-05T01:00:00Z,,B1,app,en,wifi_help,wifi?,low,,not_required\n"
+        "G3,2026-01-05T01:00:00Z,,,app,en,wifi_help,wifi?,low,,not_required\n")
+    events = {e.event_id: e for e in ReplayData(d, use_llm=False).iter_events()}
+    assert events["guest:G1"].entities.room_id == "R101"      # before the move
+    assert events["guest:G2"].entities.room_id == "R102"      # after the observed move
+    assert events["guest:G2"].payload["room_id_source"] == "derived_from_booking_asof"
+    assert events["guest:G3"].entities.room_id is None        # nothing to derive from
+    alarm = events["raw:E2"].payload
+    assert "intents" not in alarm and "request_type" not in alarm
+    assert alarm["source_fields"] == {"intents": None, "request_type": []}

@@ -143,12 +143,20 @@ def _guest_events(repo: "ReplayData") -> list[NormalizedEventV1]:
             "source_priority": rec.get("priority"),
             "intents": intents,
         }
+        room = rec.get("room_id")
+        if room is None and rec.get("booking_id"):
+            # Blank room cell: use the room the booking was KNOWN to hold at this
+            # instant (causal view, reassignments up to ts). Marked as derived.
+            booking = repo.get_booking(rec["booking_id"], ts)
+            if booking is not None and booking.get("observed_room_id"):
+                room = booking["observed_room_id"]
+                payload["room_id_source"] = "derived_from_booking_asof"
         out.append(NormalizedEventV1(
             event_id=f"guest:{rec['request_id']}", timestamp_utc=ts, available_at_utc=ts,
             event_type="guest_request",
             source=SourceRefV1(file="guest_requests.csv", record_id=rec["request_id"],
                                timestamp_utc=ts),
-            entities=EventEntitiesV1(room_id=rec.get("room_id"),
+            entities=EventEntitiesV1(room_id=room,
                                      booking_id=rec.get("booking_id"),
                                      guest_request_id=rec["request_id"]),
             priority_hint=rec.get("priority") if rec.get("priority") in PRIORITIES else None,
@@ -157,11 +165,24 @@ def _guest_events(repo: "ReplayData") -> list[NormalizedEventV1]:
 
 
 # ------------------------------------------------------- deterministic streams
+RESERVED_PAYLOAD_KEYS = ("intents", "request_type", "original_text")
+
+
+def _raw_payload(event: dict) -> dict:
+    """events.jsonl fields are kept, but keys that consumers read as guest-request
+    semantics are moved under "source_fields" so a raw record cannot pose as one."""
+    clash = {k: event.pop(k) for k in RESERVED_PAYLOAD_KEYS if k in event}
+    if clash:
+        event["source_fields"] = clash
+    return event
+
 def _raw_events(repo: "ReplayData") -> list[NormalizedEventV1]:
+    from .replay import public_event
     rooms = set(repo.ds.room_ids)
     out = []
     for ev in repo.ds.raw_events:
-        ts = ev["timestamp_utc"]
+        ts = ev["timestamp_utc"]                 # availability key (whole seconds)
+        occurred = ev.get("_source_ts") or ts    # original instant, precision kept
         asset = ev.get("asset_id")
         room = ev.get("room_id") or ev.get("to_room")
         if room is None and isinstance(asset, str):
@@ -170,13 +191,13 @@ def _raw_events(repo: "ReplayData") -> list[NormalizedEventV1]:
             elif asset.startswith("WM_") and asset[3:] in rooms:
                 room = asset[3:]
         out.append(NormalizedEventV1(
-            event_id=f"raw:{ev['event_id']}", timestamp_utc=ts, available_at_utc=ts,
+            event_id=f"raw:{ev['event_id']}", timestamp_utc=occurred, available_at_utc=ts,
             event_type="bms_alarm" if ev.get("type") == "bms_alarm" else "operational_event",
             source=SourceRefV1(file="events.jsonl", record_id=str(ev["event_id"]),
-                               timestamp_utc=ts),
+                               timestamp_utc=occurred),
             entities=EventEntitiesV1(room_id=room, booking_id=ev.get("booking_id"),
                                      asset_id=asset, resource_id=ev.get("resource_id")),
-            payload=dict(ev)))
+            payload=_raw_payload(public_event(ev))))
     return out
 
 
@@ -269,7 +290,7 @@ def _work_order_events(repo: "ReplayData") -> list[NormalizedEventV1]:
 def _tick_events(repo: "ReplayData") -> list[NormalizedEventV1]:
     manifest = repo.ds.manifest
     start, end = manifest.get("start_utc"), manifest.get("end_utc")
-    step = int(manifest.get("interval_seconds") or 900)
+    step = repo.ds.interval_seconds
     if not start or not end:  # fall back to the observed range of a dense series
         try:
             ts_list = next(iter(repo.ds.series("water_main.csv").groups.values()))[0]

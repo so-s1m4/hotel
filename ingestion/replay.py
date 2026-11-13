@@ -101,7 +101,7 @@ class ReplayData:
         else:
             rows, ts = idx["by_room"].get(room_id, []), idx["by_room_ts"].get(room_id, [])
         lo, hi = bisect_left(ts, start), bisect_right(ts, end)
-        return [dict(ev) for ev in rows[lo:hi]
+        return [public_event(ev) for ev in rows[lo:hi]
                 if event_type is None or ev.get("type") == event_type]
 
     # -------------------------------------------------------------- rooms
@@ -297,7 +297,7 @@ class ReplayData:
     def _tariff_index(self):
         """Static sorted target timestamps; availability is still checked per query."""
         if "tariff_targets" not in self._idx:
-            rows = self.ds.tariffs
+            rows = self.ds.tariffs  # sorted by (timestamp_utc, published_utc)
             self._idx["tariff_targets"] = (rows, [r["timestamp_utc"] for r in rows])
         return self._idx["tariff_targets"]
 
@@ -317,10 +317,7 @@ class ReplayData:
         start, as_of = norm_ts(start_utc), norm_ts(as_of_utc)
         end = min(norm_ts(end_utc), as_of)
         if filename == "tariff.csv":  # price history; future hours stay hidden here
-            rows, targets = self._tariff_index()
-            lo, hi = bisect_left(targets, start), bisect_right(targets, end)
-            return [dict(r) for r in rows[lo:hi]
-                    if r.get("published_utc") is not None and r["published_utc"] <= as_of]
+            return self._known_tariffs(start, end, as_of)
         series = self.ds.series(filename)
         if entity_id is not None and filename == "room_water.csv" and entity_id.startswith("WM_R"):
             entity_id = entity_id[3:]
@@ -347,10 +344,17 @@ class ReplayData:
         """Hourly prices from hour(as_of) to until that were published <= as_of."""
         as_of, until = norm_ts(as_of_utc), norm_ts(until_utc)
         first = as_of[:13] + ":00:00Z"
+        return self._known_tariffs(first, until, as_of)
+
+    def _known_tariffs(self, first: str, last: str, as_of: str) -> list[dict[str, Any]]:
+        """Per target hour the most recently published price known at as_of."""
         rows, targets = self._tariff_index()
-        lo, hi = bisect_left(targets, first), bisect_right(targets, until)
-        return [dict(r) for r in rows[lo:hi]
-                if r.get("published_utc") is not None and r["published_utc"] <= as_of]
+        lo, hi = bisect_left(targets, first), bisect_right(targets, last)
+        best: dict[str, dict] = {}
+        for row in rows[lo:hi]:  # sorted by (timestamp, published): later revision wins
+            if row.get("published_utc") is not None and row["published_utc"] <= as_of:
+                best[row["timestamp_utc"]] = row
+        return [dict(best[key]) for key in sorted(best)]
 
     # ------------------------------------------- extras (not in the Protocol)
     def get_work_orders(self, as_of_utc: str, asset_id: str | None = None) -> list[dict[str, Any]]:
@@ -369,6 +373,15 @@ class ReplayData:
     def audit(self) -> dict[str, Any]:
         """Row counts and de-duplication counters for files loaded so far."""
         return dict(self.ds.audit)
+
+
+def public_event(ev: dict) -> dict[str, Any]:
+    """Copy of a raw event with its original source instant (sub-second precision)."""
+    out = dict(ev)
+    precise = out.pop("_source_ts", None)
+    if precise is not None:
+        out["timestamp_utc"] = precise
+    return out
 
 
 def work_order_view(row: dict, as_of: str) -> dict[str, Any]:

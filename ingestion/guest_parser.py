@@ -33,7 +33,7 @@ from common.contracts.schemas import ExtractionMetaV1, GuestIntentV1, SCHEMA_VER
 __all__ = ["parse_request", "parse_request_full", "parse_requests_batch"]
 
 LOGGER = logging.getLogger(__name__)
-PARSER_VERSION = "1.0.1"
+PARSER_VERSION = "1.0.3"  # bump invalidates cached extractions (1.0.3: zone-abbreviation fix)
 PROMPT_VERSION = "guest-semantics-v1"
 MAX_RESPONSE_BYTES = 2_000_000
 MAX_INTENTS = 32
@@ -358,7 +358,10 @@ def _local_time(day: date, clock: time, quoted: str) -> datetime | None:
     zone = ZoneInfo("Europe/Vienna")
     # Non-hotel zones and UTC offsets need explicit support; never silently
     # reinterpret them as Vienna or truncate UTC+02 to UTC.
-    if re.search(r"\b(?:UTC|GMT)\s*[+-]|\b(?:EST|EDT|PST|PDT|CST|CDT|MST|MDT|BST|IST|EET|EEST)\b", quoted, re.I):
+    # Zone abbreviations are matched case-sensitively: French "est", German "ist",
+    # English "best"/"most" must not be read as EST/IST/... time zones.
+    if (re.search(r"\b(?:UTC|GMT)\s*[+-]", quoted, re.I)
+            or re.search(r"\b(?:EST|EDT|PST|PDT|CST|CDT|MST|MDT|BST|IST|EET|EEST)\b", quoted)):
         return None
     # Round trips distinguish nonexistent spring times and ambiguous fall times.
     candidates: dict[datetime, str | None] = {}
@@ -413,7 +416,8 @@ def _surrounding_time_qualifiers(quoted: str, evidence: str, original: str) -> t
                 bound = True
             else:
                 zones.add(name)
-        elif re.match(r"\s*(?:EST|EDT|PST|PDT|CST|CDT|MST|MDT|BST|IST|EET|EEST|[+-]\d{2}:?\d{2})\b", suffix, re.I):
+        elif re.match(r"\s*(?:EST|EDT|PST|PDT|CST|CDT|MST|MDT|BST|IST|EET|EEST|[+-]\d{2}:?\d{2})\b",
+                      original[end:end + 90]):  # raw text: case-sensitive abbreviations
             bound = True
     if len(zones) > 1:
         bound = True
