@@ -50,8 +50,8 @@ def test_preflight_does_not_create_decisions(dataset):
     assert not output.exists()
 
 
-def test_unimplemented_pipeline_fails_without_touching_output(dataset):
-    output = dataset / "decisions.jsonl"
+def test_unimplemented_pipeline_fails_without_touching_output(dataset, tmp_path_factory):
+    output = tmp_path_factory.mktemp("pipeline_output") / "decisions.jsonl"
     output.write_text("existing result\n")
     result = subprocess.run([sys.executable, str(ROOT / "run.py"), "--data-dir", str(dataset),
                              "--out", str(output)], capture_output=True, text=True)

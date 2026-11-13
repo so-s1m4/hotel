@@ -1,0 +1,142 @@
+"""Internal engine types. The frozen common contracts remain unchanged."""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from hashlib import sha256
+import math
+from zoneinfo import ZoneInfo
+
+from common.contracts.schemas import DecisionRecordV2
+
+VIENNA = ZoneInfo("Europe/Vienna")
+
+
+def instant(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None or parsed.utcoffset() != timedelta(0):
+        raise ValueError(f"Expected UTC timestamp: {value}")
+    return parsed
+
+
+def utc(value: datetime) -> str:
+    return value.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def ago(now: str, minutes: int) -> str:
+    return utc(instant(now) - timedelta(minutes=minutes))
+
+
+def number(value) -> float | None:
+    if value is None or isinstance(value, bool) or value == "":
+        return None
+    try:
+        result = float(value)
+        return result if math.isfinite(result) else None
+    except (ValueError, TypeError):
+        return None
+
+
+def stable_id(prefix: str, *parts: str) -> str:
+    return prefix + ":" + sha256("\x00".join(parts).encode()).hexdigest()[:20]
+
+
+def observations(repo, filename: str, start: str, now: str,
+                 entity: str | None = None, metric: str | None = None) -> list[dict]:
+    """Bound again at the engine boundary, deduplicate without filling gaps."""
+    rows = repo.get_measurements(filename, start, now, now, entity_id=entity, metric=metric)
+    unique = {}
+    for row in rows:
+        t = row.get("timestamp_utc")
+        if not t or not instant(start) <= instant(t) <= instant(now):
+            continue
+        if entity and entity not in (row.get("room_id"), row.get("asset_id")):
+            continue
+        if metric and row.get("metric") != metric:
+            continue
+        key = (t, row.get("room_id"), row.get("asset_id"), row.get("metric"))
+        # Conflicting duplicates are unknown, never select whichever supports an alarm.
+        if key in unique and unique[key] != row:
+            unique[key] = {"timestamp_utc": t, "room_id": row.get("room_id"),
+                           "asset_id": row.get("asset_id"), "metric": row.get("metric")}
+        else:
+            unique.setdefault(key, dict(row))
+    return sorted(unique.values(), key=lambda r: instant(r["timestamp_utc"]))
+
+
+def room_state(repo, room: str, now: str) -> dict:
+    state = repo.get_room_state(room, now) or {}
+    stamp = state.get("last_observed_utc")
+    if stamp and instant(stamp) > instant(now):
+        return {"room_id": room, "occupancy": "unknown"}
+    return state
+
+
+@dataclass(frozen=True)
+class EngineConfig:
+    """Conservative prototype thresholds; not calibrated performance estimates."""
+    cleaning_minutes: int = 45
+    inspection_minutes: int = 15
+    telemetry_max_age_minutes: int = 30
+    water_window_minutes: int = 60
+    water_min_l_per_interval: float = 3.0
+    water_max_l_per_interval: float = 100.0
+    main_residual_min_l_per_interval: float = 120.0
+    cold_window_minutes: int = 30
+    cold_forecast_c: float = 0.0
+    low_cop: float = 1.7
+
+    def __post_init__(self):
+        for name, value in self.__dict__.items():
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or number(value) is None:
+                raise ValueError(f"{name} must be a finite number")
+        for name in ("cleaning_minutes", "inspection_minutes", "telemetry_max_age_minutes", "water_window_minutes", "cold_window_minutes"):
+            value = getattr(self, name)
+            if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+                raise ValueError(f"{name} must be a positive integer")
+        if self.water_window_minutes < 60 or self.water_window_minutes % 15:
+            raise ValueError("water_window_minutes must be at least 60 and a multiple of 15")
+        if self.cold_window_minutes < 30 or self.cold_window_minutes % 15:
+            raise ValueError("cold_window_minutes must be at least 30 and a multiple of 15")
+        if not 0 < self.water_min_l_per_interval < self.water_max_l_per_interval <= 2000:
+            raise ValueError("Invalid room-water thresholds")
+        if self.main_residual_min_l_per_interval <= 0 or self.low_cop <= 0:
+            raise ValueError("Residual and COP thresholds must be positive")
+
+
+@dataclass
+class Candidate:
+    key: str
+    asset: str
+    issue: str
+    action: str
+    reason: str
+    evidence: list[str]
+    verification: str
+    outcome: str
+    priority: str = "medium"
+    human: bool = False
+    consent: bool = False
+    resource: str | None = None
+    request_ids: list[str] = field(default_factory=list)
+    context: dict = field(default_factory=dict)
+    variant: str = "initial"
+
+    def record(self, now: str, episode: str) -> DecisionRecordV2:
+        return DecisionRecordV2(
+            event_id=stable_id("decision", episode, self.action, self.variant),
+            timestamp_utc=now, affected_assets=[self.asset], issue_type=self.issue,
+            action=self.action, priority=self.priority, reason=self.reason,
+            requires_human_approval=self.human, requires_guest_consent=self.consent,
+            autonomy="approval_and_consent" if self.consent else "human_approval" if self.human else "autonomous",
+            episode_id=episode, evidence=list(dict.fromkeys(self.evidence)),
+            expected_outcome="SIMULATED proposal: " + self.outcome,
+            verification_plan=self.verification, resource_id=self.resource,
+            guest_request_ids=self.request_ids,
+        )
+
+
+@dataclass
+class DetectionResult:
+    candidates: list[Candidate] = field(default_factory=list)
+    resolved: set[str] = field(default_factory=set)
