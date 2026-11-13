@@ -378,6 +378,8 @@ class ReplayData:
 def public_event(ev: dict) -> dict[str, Any]:
     """Copy of a raw event with its original source instant (sub-second precision)."""
     out = dict(ev)
+    if isinstance(out.get("source_fields"), dict):
+        out["source_fields"] = dict(out["source_fields"])
     precise = out.pop("_source_ts", None)
     if precise is not None:
         out["timestamp_utc"] = precise

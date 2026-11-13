@@ -394,6 +394,27 @@ def _dedup(rows: Iterable[dict], key: str, name: str, audit: dict) -> list[dict]
     return out
 
 
+# events.jsonl fields that consumers use as identifiers/keys. A non-string value
+# (list, dict, number, bool) cannot be a valid id and would be unhashable or
+# ambiguous downstream; the original is preserved under "source_fields".
+IDENTITY_FIELDS = ("type", "room_id", "booking_id", "asset_id", "resource_id",
+                   "from_room", "to_room", "alarm_code", "state", "product")
+
+
+def _sanitize_identity_fields(event: dict) -> None:
+    invalid = {}
+    for key in IDENTITY_FIELDS:
+        if key in event and event[key] is not None and not isinstance(event[key], str):
+            invalid[key] = event[key]
+            event[key] = "unknown" if key == "type" else None
+    if "type" not in event or event.get("type") in (None, ""):
+        if "type" in event:
+            invalid.setdefault("type", event["type"])
+        event["type"] = "unknown"
+    if invalid:
+        event.setdefault("source_fields", {}).update(invalid)
+
+
 class Dataset:
     """Lazy, cached access to the raw files of ONE dataset directory."""
 
@@ -584,6 +605,7 @@ class Dataset:
                         continue
                     ident = str(ident)
                     event["event_id"] = ident
+                    _sanitize_identity_fields(event)
                     if ident in seen:
                         dropped += 1
                         continue

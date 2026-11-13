@@ -655,3 +655,32 @@ def test_blank_guest_room_is_derived_from_known_booking_and_raw_keys_cannot_pose
     alarm = events["raw:E2"].payload
     assert "intents" not in alarm and "request_type" not in alarm
     assert alarm["source_fields"] == {"intents": None, "request_type": []}
+
+
+def test_non_string_identity_fields_in_raw_events_are_neutralised(tmp_path):
+    d = tmp_path / "rawtypes"
+    d.mkdir()
+    (d / "manifest.json").write_text(json.dumps({
+        "start_utc": "2026-01-05T00:00:00Z", "end_utc": "2026-01-05T01:00:00Z"}))
+    (d / "building.json").write_text(json.dumps({"building": {"rooms": [{"id": "R101"}]}}))
+    (d / "events.jsonl").write_text(
+        '{"event_id":"E1","timestamp_utc":"2026-01-05T00:10:00Z","type":[],"room_id":"R101"}\n'
+        '{"event_id":"E2","timestamp_utc":"2026-01-05T00:11:00Z","type":{},"room_id":["R101"]}\n'
+        '{"event_id":"E3","timestamp_utc":"2026-01-05T00:12:00Z","room_id":"R101"}\n'
+        '{"event_id":"E4","timestamp_utc":"2026-01-05T00:13:00Z","type":"checkout","room_id":"R101",'
+        '"booking_id":7}\n')
+    repo = ReplayData(d, use_llm=False)
+    events = {e.event_id: e for e in repo.iter_events()}
+    e1, e2, e3, e4 = (events[f"raw:E{i}"].payload for i in range(1, 5))
+    assert e1["type"] == "unknown" and e1["source_fields"] == {"type": []}
+    assert e2["type"] == "unknown" and e2["room_id"] is None
+    assert e2["source_fields"] == {"type": {}, "room_id": ["R101"]}
+    assert e3["type"] == "unknown"
+    assert e4["type"] == "checkout" and e4["booking_id"] is None
+    assert e4["source_fields"] == {"booking_id": 7}
+    for payload in (e1, e2, e3, e4):  # every identifier is hashable now
+        hash((payload["type"], payload.get("room_id"), payload.get("booking_id")))
+    raw = repo.get_events("2026-01-05T00:00:00Z", "2026-01-05T01:00:00Z", "2026-01-05T01:00:00Z")
+    raw[0]["source_fields"]["type"] = "mutated"
+    again = repo.get_events("2026-01-05T00:00:00Z", "2026-01-05T01:00:00Z", "2026-01-05T01:00:00Z")
+    assert again[0]["source_fields"] == {"type": []}

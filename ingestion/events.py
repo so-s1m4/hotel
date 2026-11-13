@@ -173,7 +173,8 @@ def _raw_payload(event: dict) -> dict:
     semantics are moved under "source_fields" so a raw record cannot pose as one."""
     clash = {k: event.pop(k) for k in RESERVED_PAYLOAD_KEYS if k in event}
     if clash:
-        event["source_fields"] = clash
+        existing = event.get("source_fields")
+        event["source_fields"] = {**(existing if isinstance(existing, dict) else {}), **clash}
     return event
 
 def _raw_events(repo: "ReplayData") -> list[NormalizedEventV1]:
