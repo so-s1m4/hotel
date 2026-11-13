@@ -46,14 +46,21 @@ python -m engine.validation --data-dir data/PLATO40_v2_dev \
 согласования, структурированные отмены, пересечения ресурсов/комнат, уже известную
 занятость и точные дубли уведомлений. Это не сертификат отсутствия всех ошибок.
 
-[Проверка Dev](docs/reviews/f5_dev_validation.json),
-[проверка Quickstart](docs/reviews/f5_quickstart_validation.json).
+[Текущая проверка Dev](docs/reviews/reliability_dev_validation.json),
+[проверка Quickstart](docs/reviews/reliability_quickstart_validation.json),
+[сводка 25 проверок и хэши](docs/reviews/reliability_verification.json).
 
-Финальная проверка F5: 699 тестов. Для runtime `6f8cbc0` получены 335 решений Quickstart и
-6 343 Dev с соответствующими строками аудита; валидатор не нашёл ошибок в своей
-области проверки. Два независимых Dev-процесса с `PYTHONHASHSEED=71` и `11`
+Для runtime `f8370bb` получены 342 решения Quickstart и 7 201 Dev с соответствующими
+строками аудита, без ошибок валидатора и safety rejections. В корне опубликована
+именно эта проверенная Dev-генерация. Все 1 026 тестов зафиксированы в репозитории
+и прошли за 75,04 с; runtime-код — `f8370bb`. Два независимых Dev-процесса с `PYTHONHASHSEED=71` и `11`
 дали побайтово одинаковые решения и аудит:
-[проверка воспроизводимости](docs/reviews/f5_reproducibility.json).
+[воспроизводимость](docs/reviews/reliability_reproducibility.json).
+[Исправления 17 групп дефектов, A–E, CLI и границы проверки](docs/reviews/HARDENING.md).
+
+Исторический F5 snapshot сохранён отдельно: runtime `6f8cbc0`, 699 тестов,
+335 решений Quickstart и 6 343 Dev. Его JSON-отчёты и парный эксперимент не заменены
+новыми результатами: [отчёт F5](docs/reviews/F5.md).
 
 CLI по умолчанию отключает модель. `--llm` явно включает настроенный parser;
 ошибка/отсутствие модели сохраняет source-label fallback. Настройки — `.env.example`;

@@ -1,0 +1,296 @@
+{
+  "scope": "Read-only classification of existing offline proposals using causal gateway state; no new replay, messages sent, teacher labels, detection-accuracy or measured-repair claim.",
+  "generated_at_utc": "2026-11-13T21:37:17.194432+00:00",
+  "runtime_commit": "f8370bb27558dd64a24f08b1fb5f65c13e6eae54",
+  "decisions_artifact": {
+    "path": "outputs/reliability_dev_decisions.jsonl",
+    "sha256": "9c69d44c4c2d41df46911d293cbb0631cdb3899bc1d271c443b080ae8c71a5dd",
+    "bytes": 13455804
+  },
+  "baseline_decisions_artifact": {
+    "path": "outputs/reliability_baseline_213dfe4_decisions.jsonl",
+    "sha256": "282623e908a7faf84c9dfb0c67cf5f7e541c36d92f5e0a056857b6a44545f58c",
+    "bytes": 12501277
+  },
+  "gateway_inputs": {
+    "building.json": {
+      "path": "data/PLATO40_v2_dev/building.json",
+      "sha256": "671785fcc397b9f61811c4ae04cffdd49a5468621bf310f9424238512be397d3",
+      "bytes": 69957
+    },
+    "manifest.json": {
+      "path": "data/PLATO40_v2_dev/manifest.json",
+      "sha256": "73fb3c10d9531c3a11d12e13116122a6b598ab05fc3b07cb438ef718ecebfde2",
+      "bytes": 996
+    },
+    "events.jsonl": {
+      "path": "data/PLATO40_v2_dev/events.jsonl",
+      "sha256": "217d6211d872a450c884a9e421f5a84d50539049fe3807921d7addb5eaf1fc9b",
+      "bytes": 3291986
+    },
+    "room_telemetry.csv": {
+      "path": "data/PLATO40_v2_dev/room_telemetry.csv",
+      "sha256": "71278be6b629344f65e9bb469e39e7a061dd09d4028af524256f167ed7251ca8",
+      "bytes": 79700433
+    }
+  },
+  "gateway_source": {
+    "path": "ingestion/replay.py",
+    "sha256": "c7637a468349f9d52c047a6dfa83c0f5da39c34bc694359cd031e01c5a4d5fd9",
+    "bytes": 20874
+  },
+  "gateway_loader_source": {
+    "path": "ingestion/loader.py",
+    "sha256": "40fcf48b53c05d82e64d69a9e0e9bfef466c43eb1fc562d83524ee1c7e5ed1f4",
+    "bytes": 27099
+  },
+  "selection": {
+    "issue_type": "heating_comfort",
+    "action": "notify_guest"
+  },
+  "method": {
+    "query": "ReplayData(data_dir, use_llm=False).get_room_state(room_id, decision.timestamp_utc), once per notice",
+    "query_count": 1890,
+    "ordering": "ascending decision timestamp_utc then event_id",
+    "physical_episode_key": [
+      "room_id",
+      "episode_id"
+    ],
+    "guest_scope_key": [
+      "room_id",
+      "episode_id",
+      "current_booking_id from causal gateway"
+    ],
+    "classification_order": [
+      "first notice in physical episode",
+      "previously unseen guest in that episode",
+      "priority strictly above all previous notices to same guest in that episode",
+      "otherwise non-escalating repeat"
+    ],
+    "severity_rank": {
+      "low": 0,
+      "medium": 1,
+      "high": 2,
+      "critical": 3
+    },
+    "unknown_booking_policy": "None stays a single unknown recipient scope; unknowns are counted separately, never given synthetic guest IDs.",
+    "limitation": "Physical episode IDs are the engine output IDs, not independently adjudicated real incidents. New scope/severity explains proposal counts without establishing that a message was needed or delivered."
+  },
+  "counts": {
+    "all_decisions": 7201,
+    "selected_notices": 1890,
+    "rooms": 40,
+    "physical_episodes": 1032,
+    "guest_episode_scopes": 1643,
+    "classification": {
+      "first_notice_in_physical_episode": 1032,
+      "upward_severity_for_same_guest": 247,
+      "new_guest_in_existing_physical_episode": 611,
+      "same_guest_non_escalating_repeat": 0
+    },
+    "priority": {
+      "medium": 1188,
+      "high": 702
+    }
+  },
+  "causal_state_controls": {
+    "occupancy": {
+      "occupied": 1890
+    },
+    "unknown_booking_notice_count": 0,
+    "unknown_booking_decision_ids": [],
+    "non_occupied_notice_count": 0,
+    "missing_future_or_older_than_30_min_telemetry_count": 0,
+    "telemetry_control_decision_ids": []
+  },
+  "baseline_comparison": {
+    "baseline_commit": "213dfe4",
+    "baseline_heating_notices": 1032,
+    "current_heating_notices": 1890,
+    "notice_delta": 858,
+    "baseline_unique_notice_episodes": 1032,
+    "notice_episode_sets_equal": true,
+    "current_only_episode_count": 0,
+    "baseline_only_episode_count": 0,
+    "new_guest_plus_upward_severity": 858
+  },
+  "reported_peer_counts": {
+    "first_notice_in_physical_episode": 1032,
+    "new_guest_in_existing_physical_episode": 611,
+    "upward_severity_for_same_guest": 247,
+    "same_guest_non_escalating_repeat": 0
+  },
+  "independent_counts_match_reported_peer": true,
+  "classification_trace_sha256": "03bf6bc65858ac680b7ff9cf8a24a7ecb3bdb7c651ae3d6e13c80358310794ef",
+  "examples_by_classification": {
+    "first_notice_in_physical_episode": [
+      {
+        "decision_id": "decision:a1d2574ae7d8bf4c270c",
+        "timestamp_utc": "2026-01-01T02:15:00Z",
+        "room_id": "R303",
+        "episode_id": "episode:815edcc4aabfb6d7f845",
+        "current_booking_id": "BK000094",
+        "occupancy": "occupied",
+        "priority": "medium",
+        "previous_highest_priority_rank": null,
+        "classification": "first_notice_in_physical_episode",
+        "state_evidence": [
+          "room_telemetry.csv:R303:2026-01-01T02:15:00Z",
+          "events.jsonl:E0000005:stay_in_progress:2026-01-01T00:00:00Z"
+        ],
+        "state_last_observed_utc": "2026-01-01T02:15:00Z"
+      },
+      {
+        "decision_id": "decision:08331e5a0e77d12c54dc",
+        "timestamp_utc": "2026-01-01T03:00:00Z",
+        "room_id": "R107",
+        "episode_id": "episode:42001bc6770027675fa4",
+        "current_booking_id": "BK000113",
+        "occupancy": "occupied",
+        "priority": "medium",
+        "previous_highest_priority_rank": null,
+        "classification": "first_notice_in_physical_episode",
+        "state_evidence": [
+          "room_telemetry.csv:R107:2026-01-01T03:00:00Z",
+          "events.jsonl:E0000010:stay_in_progress:2026-01-01T00:00:00Z"
+        ],
+        "state_last_observed_utc": "2026-01-01T03:00:00Z"
+      },
+      {
+        "decision_id": "decision:e4a147810f48455fd88b",
+        "timestamp_utc": "2026-01-01T12:00:00Z",
+        "room_id": "R201",
+        "episode_id": "episode:3d5a0257c66ecf3fb74d",
+        "current_booking_id": "BK000133",
+        "occupancy": "occupied",
+        "priority": "medium",
+        "previous_highest_priority_rank": null,
+        "classification": "first_notice_in_physical_episode",
+        "state_evidence": [
+          "room_telemetry.csv:R201:2026-01-01T12:00:00Z",
+          "events.jsonl:E0000016:stay_in_progress:2026-01-01T00:00:00Z"
+        ],
+        "state_last_observed_utc": "2026-01-01T12:00:00Z"
+      }
+    ],
+    "upward_severity_for_same_guest": [
+      {
+        "decision_id": "decision:0cbd8c1bf4a110c8d8b9",
+        "timestamp_utc": "2026-01-25T06:00:00Z",
+        "room_id": "R309",
+        "episode_id": "episode:0f3c54cd591b93ed9f76",
+        "current_booking_id": "BK000389",
+        "occupancy": "occupied",
+        "priority": "high",
+        "previous_highest_priority_rank": 1,
+        "classification": "upward_severity_for_same_guest",
+        "state_evidence": [
+          "room_telemetry.csv:R309:2026-01-25T06:00:00Z",
+          "events.jsonl:E0001163:checkin_early:2026-01-22T10:00:00Z"
+        ],
+        "state_last_observed_utc": "2026-01-25T06:00:00Z"
+      },
+      {
+        "decision_id": "decision:5f0c4c4fcfed21c99c49",
+        "timestamp_utc": "2026-02-06T02:30:00Z",
+        "room_id": "R310",
+        "episode_id": "episode:c4bda6ec35d28a7cd890",
+        "current_booking_id": "BK000301",
+        "occupancy": "occupied",
+        "priority": "high",
+        "previous_highest_priority_rank": 1,
+        "classification": "upward_severity_for_same_guest",
+        "state_evidence": [
+          "room_telemetry.csv:R310:2026-02-06T02:30:00Z",
+          "events.jsonl:E0001599:checkin:2026-01-31T14:00:00Z"
+        ],
+        "state_last_observed_utc": "2026-02-06T02:30:00Z"
+      },
+      {
+        "decision_id": "decision:03f891ffe9ad6b402427",
+        "timestamp_utc": "2026-02-10T03:45:00Z",
+        "room_id": "R209",
+        "episode_id": "episode:3df1a05f368a30d2ac8f",
+        "current_booking_id": "BK000534",
+        "occupancy": "occupied",
+        "priority": "high",
+        "previous_highest_priority_rank": 1,
+        "classification": "upward_severity_for_same_guest",
+        "state_evidence": [
+          "room_telemetry.csv:R209:2026-02-10T03:45:00Z",
+          "events.jsonl:E0002078:checkin:2026-02-09T18:15:00Z"
+        ],
+        "state_last_observed_utc": "2026-02-10T03:45:00Z"
+      }
+    ],
+    "new_guest_in_existing_physical_episode": [
+      {
+        "decision_id": "decision:8802af8381909c4ac871",
+        "timestamp_utc": "2026-03-10T02:45:00Z",
+        "room_id": "R403",
+        "episode_id": "episode:f74ceece1e54b957d7eb",
+        "current_booking_id": "BK000444",
+        "occupancy": "occupied",
+        "priority": "medium",
+        "previous_highest_priority_rank": null,
+        "classification": "new_guest_in_existing_physical_episode",
+        "state_evidence": [
+          "room_telemetry.csv:R403:2026-03-10T02:45:00Z",
+          "events.jsonl:E0003670:checkin:2026-03-09T14:00:00Z"
+        ],
+        "state_last_observed_utc": "2026-03-10T02:45:00Z"
+      },
+      {
+        "decision_id": "decision:cfba5644056dd8acc0b7",
+        "timestamp_utc": "2026-04-10T20:15:00Z",
+        "room_id": "R304",
+        "episode_id": "episode:08b7391eaac7d7746d21",
+        "current_booking_id": "BK001069",
+        "occupancy": "occupied",
+        "priority": "medium",
+        "previous_highest_priority_rank": null,
+        "classification": "new_guest_in_existing_physical_episode",
+        "state_evidence": [
+          "room_telemetry.csv:R304:2026-04-10T20:15:00Z",
+          "events.jsonl:E0005577:checkin:2026-04-10T13:00:00Z"
+        ],
+        "state_last_observed_utc": "2026-04-10T20:15:00Z"
+      },
+      {
+        "decision_id": "decision:7dc12608a98f75e78198",
+        "timestamp_utc": "2026-05-03T16:45:00Z",
+        "room_id": "R102",
+        "episode_id": "episode:43b93de79277cda26edb",
+        "current_booking_id": "BK000747",
+        "occupancy": "occupied",
+        "priority": "medium",
+        "previous_highest_priority_rank": null,
+        "classification": "new_guest_in_existing_physical_episode",
+        "state_evidence": [
+          "room_telemetry.csv:R102:2026-05-03T16:45:00Z",
+          "events.jsonl:E0006913:checkin:2026-05-03T13:00:00Z"
+        ],
+        "state_last_observed_utc": "2026-05-03T16:45:00Z"
+      }
+    ]
+  },
+  "non_escalating_counterexamples": [],
+  "final_runtime_refresh": {
+    "method": "Independent rerun of one causal gateway query per current heating-comfort notice after final runtime completed; actual frozen source hashes checked before classification.",
+    "query_count": 1890,
+    "source_snapshot": {
+      "path": "outputs/reliability_runtime_sources.json",
+      "sha256": "0617e6f84d0722ed70ff93f2bf0705270df842e39be2cfbc17288517592eb1d1",
+      "bytes": 3652
+    },
+    "source_files_verified": 35,
+    "previous_audit": {
+      "runtime_commit": "06524ac467f978ffffbd3978cdbe534e8e1cbe34",
+      "report_sha256": "3f4a571f0df6a7f2a06330158dff83311acc74da81b18829f8b3f0823935d170",
+      "decisions_sha256": "9c69d44c4c2d41df46911d293cbb0631cdb3899bc1d271c443b080ae8c71a5dd",
+      "classification_trace_sha256": "03bf6bc65858ac680b7ff9cf8a24a7ecb3bdb7c651ae3d6e13c80358310794ef"
+    },
+    "decisions_bytes_equal_previous_audit": true,
+    "classification_trace_equal_previous_audit": true
+  }
+}
