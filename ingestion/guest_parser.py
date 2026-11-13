@@ -33,7 +33,7 @@ from common.contracts.schemas import ExtractionMetaV1, GuestIntentV1, SCHEMA_VER
 __all__ = ["parse_request", "parse_request_full", "parse_requests_batch"]
 
 LOGGER = logging.getLogger(__name__)
-PARSER_VERSION = "1.0.3"  # bump invalidates cached extractions (1.0.3: zone-abbreviation fix)
+PARSER_VERSION = "1.0.4"  # bump invalidates cached extractions (1.0.4: date/cache guards)
 PROMPT_VERSION = "guest-semantics-v1"
 MAX_RESPONSE_BYTES = 2_000_000
 MAX_INTENTS = 32
@@ -244,7 +244,9 @@ _RELATIVE_DAYS = {
     "it": [(2, r"\bdopodomani\b"), (1, r"\bdomani\b"), (0, r"\boggi\b")],
     "fr": [(2, r"\bapres[ -]demain\b"), (1, r"\bdemain\b"), (0, r"\baujourd['’]?hui\b")],
     "es": [(2, r"\bpasado manana\b"), (1, r"(?<!por la )(?<!de la )\bmanana\b"), (0, r"\bhoy\b")],
-    "nl": [(2, r"\bovermorgen\b"), (1, r"\bmorgen\b"), (0, r"\bvandaag\b")],
+    # Dutch day-part compounds retain their day offset; match complete words only.
+    "nl": [(2, r"\bovermorgen(?:ochtend|middag|avond)?\b"),
+           (1, r"\bmorgen(?:ochtend|middag|avond)?\b"), (0, r"\bvandaag\b")],
 }
 _APPROXIMATE = re.compile(r"\b(around|about|approximately|roughly|gegen|etwa|ungefahr|circa|ca\.?|environ|vers|verso|sobre|alrededor|aproximadamente|ongeveer|rond)\b")
 _VAGUE_TIME = re.compile(r"\b(after|before|between|nach|vor|zwischen|dopo|prima|tra|apres|avant|entre|despues|antes|na|voor|tussen)\b")
@@ -550,12 +552,15 @@ def _read_cache(path: Path) -> tuple[list[dict], ExtractionMetaV1] | None:
         if path.stat().st_size > MAX_RESPONSE_BYTES:
             return None
         value = json.loads(path.read_text(encoding="utf-8"))
-        if value.get("cache_key") != path.stem:
+        if not isinstance(value, dict) or value.get("cache_key") != path.stem:
             return None
         meta = ExtractionMetaV1.model_validate(value["extraction"])
         if meta.method != "llm":
             return None
         raw = _decode(_canonical({"intents": value["intents"]}))
+        # Treat unusable cached intents as a miss so a configured model can retry.
+        for item in raw:
+            GuestIntentV1.model_validate(item, strict=True)
         return raw, meta
     except (OSError, ValueError, KeyError, TypeError):
         return None
