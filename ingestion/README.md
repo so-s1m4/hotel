@@ -124,4 +124,5 @@ going blank at once points at the gateway, not at forty individual sensors.
   900 s with a warning and `manifest:interval_seconds_invalid` in the audit.
 - Tariff revisions are kept: each query returns the latest price published by `as_of`.
 - `tests/ingestion/test_holdout_robustness.py` (65 fuzz cases from an independent review)
-  documents the three accepted policy differences as strict `xfail`s.
+  asserts these policies directly (audited interval fallback, diagnosed empty files,
+  preserved source precision).
