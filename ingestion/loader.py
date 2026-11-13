@@ -37,6 +37,7 @@ SERIES_FILES: dict[str, tuple[str | None, str | None]] = {
     "logistics.csv": ("asset_id", "metric"),
     "access_log.csv": ("door_id", None),
 }
+PARSE_MEMO_ROWS = 150_000  # per file; keeps Dev memory bounded
 STRING_COLUMNS = {
     "timestamp_utc", "room_id", "asset_id", "metric", "housekeeping_state",
     "door_id", "credential", "result",
@@ -129,6 +130,7 @@ class Series:
         self.entity_col, self.metric_col = SERIES_FILES[filename]
         self.duplicates_dropped = 0
         self.rows_read = 0
+        self._memo: dict[str, dict[str, Any]] = {}
         with path.open("r", encoding="utf-8", newline="") as handle:
             lines = handle.read().splitlines()
         self.columns = lines[0].split(",") if lines else []
@@ -180,6 +182,15 @@ class Series:
                      filename, self.duplicates_dropped)
 
     def _parse(self, line: str) -> dict[str, Any]:
+        """Parsed copy of one raw line; a bounded memo serves overlapping windows."""
+        cached = self._memo.get(line)
+        if cached is None:
+            if len(self._memo) >= PARSE_MEMO_ROWS:
+                self._memo.clear()
+            cached = self._memo[line] = self._parse_line(line)
+        return dict(cached)
+
+    def _parse_line(self, line: str) -> dict[str, Any]:
         if '"' in line:
             cells = next(csv.reader([line]))
         else:
