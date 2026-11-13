@@ -53,6 +53,8 @@ benchmark_args=(
   --base-url http://127.0.0.1:11434/v1
   --model "$candidate_model"
   --timeout-seconds 15
+  --response-format-mode json_object
+  --max-tokens 384
 )
 
 python -m scripts.benchmark_guest_parser "${benchmark_args[@]}" \
@@ -66,6 +68,67 @@ zero-call plan. It does not create the managed cache. Inspect the
 selected case IDs, count, endpoint and pinned hashes before execution. Report
 paths must be new; existing files, including symlink/hardlink aliases, are rejected
 before calls. Reports cannot be placed inside the managed candidate/run cache.
+
+## Structured generation and declared runtime settings
+
+`--response-format-mode json_object` is the default and keeps the JSON-object
+transport contract. `--response-format-mode json_schema` opts into the complete
+strict generation schema. The host still validates and grounds every reply;
+constrained generation is not evidence that the model understood a request.
+A server may reject an unsupported strict schema; inspect transport/fallback
+paths instead of counting that as a successful structured prediction.
+
+`--max-tokens 384` requests an explicit output cap (integer 1..16384). Omitting
+this option means no output cap is requested by this harness; a server may apply
+its own limit. The benchmark explicitly sets `LLM_RESPONSE_FORMAT` and overrides
+inherited `LLM_MAX_TOKENS`, restoring the caller's environment afterward. The
+report records `max_tokens=null` when no cap was requested. These flags describe
+request settings, not measurements of actual output tokens.
+
+The manifest includes the exact `response_format` object plus its canonical
+SHA-256, the full generation-schema SHA-256 and the requested token cap. Even
+JSON-object mode pins the generation schema for identity. These are separate
+from the normalized public `GuestIntentV1` schema hash. Changing either mode,
+schema, cap or declared runtime settings invalidates a warm run identity. Use a
+new run ID for an intentional comparison; never relabel one mode's cached output
+as a result from another mode.
+
+Optionally pass `--runtime-metadata path/to/runtime.json`. This is an input JSON
+object; the report retains its validated values under
+`manifest.runtime_metadata`, explicitly marked
+`provenance="operator_supplied_not_measured"`, and hashes those values into the
+run identity. Example:
+
+```json
+{
+  "served_model_digest": "sha256:REPLACE_WITH_FULL_64_HEX_DIGEST",
+  "runtime": "operator-declared runtime name",
+  "runtime_version": "operator-declared version",
+  "quantization": "operator-declared quantization",
+  "context_tokens": 4096,
+  "num_parallel": 1,
+  "max_loaded_models": 1,
+  "gpu_layers": 0,
+  "load_state": "operator-declared server warm state",
+  "memory_sampling": "not sampled"
+}
+```
+
+Replace the digest placeholder; the CLI requires the full 64 hex digits, with
+optional `sha256:` prefix. Allowed additional fields are `machine` (nonempty
+string), `total_ram_gib` (finite positive number), and `server_slots` (positive
+integer alias for `num_parallel`; declarations must agree if both are present).
+Context, parallel and loaded-model counts must be positive integers; GPU layers
+may be zero. No field is inferred or required: absent declarations remain absent.
+Unknown fields are rejected to keep credentials and arbitrary configuration out
+of reports. Do not put secrets into any allowed string field.
+
+The runner does not query server settings or verify its served digest. A declared
+weights digest, slots, context, loaded-model limit, load state or sampling method
+must never be presented as measured server attestation. The `revision` argument
+and `served_model_digest` are distinct operator declarations; keep their meaning
+explicit when a repository revision differs from a weights digest. Actual memory,
+load and token measurements need separately retained operator evidence.
 
 ## Cold, cache-warm and queued-client runs
 
@@ -102,7 +165,9 @@ python -m scripts.benchmark_guest_parser "${benchmark_args[@]}" \
 ```
 
 Warm mode requires matching candidate/run identity, revision, inputs, worker
-count, endpoint/model, parser/prompt/schema hashes and timeout. Transport or
+count, endpoint/model, parser/prompt/schema hashes, timeout, response-format mode,
+full generation-schema and response-format hashes, output token cap and declared
+runtime metadata hash. Transport or
 validation fallbacks are not cached. Valid normalized extractions are cached even
 when a gold check fails, so a warm run can retry uncached cases but does not rerun
 every gold-check failure.
@@ -110,8 +175,9 @@ Use a different run ID for a fresh worker-count comparison. Six client workers
 are not a claim of six parallel server inference slots. Record the independently
 configured server concurrency and measure its memory use separately.
 
-Parser `1.0.4` deliberately changes cache keys from `1.0.3`; old teacher caches
-will not supply warm hits. Do not use a full replay or slice its event iterator
+Parser `1.1.0` changes the generation prompt and cache identity from `1.0.4`; old
+parser or teacher caches will not supply warm hits. Both response-format arms use
+the same full envelope prompt; the transport constraint is their explicit difference. Do not use a full replay or slice its event iterator
 to bound model work: event construction is eager. The benchmark's input selection
 occurs before parsing. The production public batch helper is also sequential,
 so this harness creates its own explicit worker pool.

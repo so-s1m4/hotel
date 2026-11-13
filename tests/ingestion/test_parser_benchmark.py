@@ -414,3 +414,131 @@ def test_unusable_or_input_alias_output_is_rejected_before_calls(benchmark, pars
     transport.assert_not_called()
     assert input_path.read_bytes() == original
     assert protected.read_bytes() == protected_before
+
+
+@pytest.mark.parametrize('changed', [
+    {'response_format_mode': 'json_schema'},
+    {'max_tokens': 256},
+    {'runtime_metadata': {'served_model_digest': 'sha256:' + 'b' * 64, 'num_parallel': 2}},
+], ids=['response-mode', 'output-token-cap', 'declared-runtime'])
+def test_generation_settings_cannot_reuse_a_warm_run_identity(benchmark, parser, cases, tmp_path, monkeypatch, changed):
+    path = write_cases(tmp_path/'cases.jsonl', cases[:1])
+    transport = Mock(side_effect=lambda messages, settings: reply(guest_record(messages)))
+    monkeypatch.setattr(parser, '_call_llm', transport)
+    config = config_for(benchmark, tmp_path, path, limit=1, execute=True)
+    cold = benchmark.run_benchmark(config, parser_module=parser)
+    assert cold['summary']['transport_calls'] == 1
+    with pytest.raises(ValueError, match='Warm cache identity'):
+        benchmark.run_benchmark(replace(config, warm=True, out=tmp_path/'changed.json', **changed), parser_module=parser)
+    assert not (tmp_path/'changed.json').exists()
+    assert transport.call_count == 1
+    warm = benchmark.run_benchmark(replace(config, warm=True, out=tmp_path/'same.json'), parser_module=parser)
+    assert warm['summary']['cache_hits'] == 1
+    assert transport.call_count == 1
+
+
+@pytest.mark.parametrize('mode', ['json_object', 'json_schema'])
+def test_exact_generation_format_and_declared_runtime_are_pinned_and_forwarded(benchmark, parser, cases, tmp_path, monkeypatch, mode):
+    from ingestion.guest_generation import response_format, generation_schema_sha256
+    path = write_cases(tmp_path/'cases.jsonl', cases[:1])
+    runtime = {'served_model_digest': 'sha256:' + 'c' * 64, 'runtime': 'synthetic-server',
+               'runtime_version': 'test', 'context_tokens': 4096, 'num_parallel': 6,
+               'max_loaded_models': 1, 'gpu_layers': 0, 'load_state': 'warm_declared',
+               'memory_sampling': 'not sampled', 'total_ram_gib': 16}
+    seen = []
+    monkeypatch.setenv('LLM_RESPONSE_FORMAT', 'json_schema' if mode == 'json_object' else 'json_object')
+    monkeypatch.setenv('LLM_MAX_TOKENS', '99')
+    before = dict(os.environ)
+
+    def transport(messages, settings):
+        seen.append(dict(settings))
+        return reply(guest_record(messages))
+
+    monkeypatch.setattr(parser, '_call_llm', transport)
+    config = config_for(benchmark, tmp_path, path, limit=1, execute=True,
+                        response_format_mode=mode, max_tokens=384, runtime_metadata=runtime)
+    report = benchmark.run_benchmark(config, parser_module=parser)
+    manifest = report['manifest']
+    assert manifest['response_format'] == response_format(mode)
+    expected = json.dumps(response_format(mode), ensure_ascii=False, sort_keys=True, separators=(',', ':'), allow_nan=False)
+    assert manifest['response_format_sha256'] == hashlib.sha256(expected.encode()).hexdigest()
+    assert manifest['generation_schema_sha256'] == generation_schema_sha256()
+    assert manifest['max_tokens'] == 384
+    assert manifest['runtime_metadata'] == {'provenance': 'operator_supplied_not_measured', 'values': runtime}
+    assert manifest['runtime_metadata_sha256'] == hashlib.sha256(benchmark._canonical(runtime).encode()).hexdigest()
+    assert seen[0]['response_format_mode'] == mode
+    assert seen[0]['max_tokens'] == 384
+    assert dict(os.environ) == before
+    assert config.runtime_metadata == runtime
+
+
+def test_default_generation_mode_clears_inherited_cap_without_claiming_server_measurement(benchmark, parser, cases, tmp_path, monkeypatch):
+    path = write_cases(tmp_path/'cases.jsonl', cases[:1])
+    monkeypatch.setenv('LLM_MAX_TOKENS', '2048')
+    monkeypatch.setenv('LLM_RESPONSE_FORMAT', 'json_schema')
+    settings_seen = []
+
+    def transport(messages, settings):
+        settings_seen.append(dict(settings))
+        return reply(guest_record(messages))
+
+    monkeypatch.setattr(parser, '_call_llm', transport)
+    report = benchmark.run_benchmark(config_for(benchmark, tmp_path, path, limit=1, execute=True), parser_module=parser)
+    assert settings_seen[0]['response_format_mode'] == 'json_object'
+    assert settings_seen[0]['max_tokens'] is None
+    assert report['manifest']['max_tokens'] is None
+    assert report['manifest']['runtime_metadata'] == {'provenance': 'operator_supplied_not_measured', 'values': {}}
+    assert os.environ['LLM_MAX_TOKENS'] == '2048'
+
+
+@pytest.mark.parametrize('changes', [
+    {'response_format_mode': 'text'}, {'max_tokens': True}, {'max_tokens': 0}, {'max_tokens': 16385},
+    {'runtime_metadata': {'served_model_digest': 'latest'}},
+    {'runtime_metadata': {'api_key': 'never-record-credentials'}},
+    {'runtime_metadata': {'num_parallel': True}},
+    {'runtime_metadata': {'server_slots': 1, 'num_parallel': 6}},
+    {'runtime_metadata': {'total_ram_gib': float('nan')}},
+])
+def test_invalid_generation_or_runtime_settings_fail_before_calls(benchmark, parser, cases, tmp_path, monkeypatch, changes):
+    path = write_cases(tmp_path/'cases.jsonl', cases[:1])
+    parse = Mock(side_effect=AssertionError('invalid settings must not parse'))
+    monkeypatch.setattr(parser, 'parse_request_full', parse)
+    with pytest.raises(ValueError):
+        benchmark.run_benchmark(config_for(benchmark, tmp_path, path, execute=True, **changes), parser_module=parser)
+    parse.assert_not_called()
+    assert not (tmp_path/'report.json').exists()
+    assert not (tmp_path/'cache').exists()
+
+
+def test_cli_reads_operator_metadata_and_generation_options_without_calls(benchmark, cases, tmp_path):
+    path = write_cases(tmp_path/'cases.jsonl', cases[:1])
+    runtime = tmp_path/'runtime.json'
+    runtime.write_text(json.dumps({'served_model_digest': 'd' * 64, 'num_parallel': 1}))
+    report = tmp_path/'plan.json'
+    assert benchmark.main(['--input', str(path), '--limit', '1', '--candidate', 'local',
+        '--revision', REVISION, '--run-id', 'plan', '--base-url', 'http://127.0.0.1:11434/v1',
+        '--model', 'synthetic-model', '--cache-root', str(tmp_path/'cache'), '--out', str(report),
+        '--workers', '1', '--response-format-mode', 'json_schema', '--max-tokens', '384',
+        '--runtime-metadata', str(runtime)]) == 0
+    manifest = json.loads(report.read_text())['manifest']
+    assert manifest['response_format_mode'] == 'json_schema'
+    assert manifest['max_tokens'] == 384
+    assert manifest['runtime_metadata']['values']['served_model_digest'] == 'd' * 64
+    assert not (tmp_path/'cache').exists()
+
+
+def test_full_generation_schema_drift_invalidates_even_json_object_warm_identity(benchmark, parser, cases, tmp_path, monkeypatch):
+    import ingestion.guest_generation as generation
+    path = write_cases(tmp_path/'cases.jsonl', cases[:1])
+    transport = Mock(side_effect=lambda messages, settings: reply(guest_record(messages)))
+    monkeypatch.setattr(parser, '_call_llm', transport)
+    config = config_for(benchmark, tmp_path, path, limit=1, execute=True)
+    cold = benchmark.run_benchmark(config, parser_module=parser)
+    # The JSON-object request itself stays identical; the envelope's nested
+    # generation contract must still isolate its old caches from a new run.
+    previous_hash = cold['manifest']['generation_schema_sha256']
+    monkeypatch.setattr(generation, 'generation_schema_sha256', lambda: '0' * 64 if previous_hash != '0' * 64 else '1' * 64)
+    with pytest.raises(ValueError, match='Warm cache identity'):
+        benchmark.run_benchmark(replace(config, warm=True, out=tmp_path/'schema-drift.json'), parser_module=parser)
+    assert transport.call_count == 1
+    assert not (tmp_path/'schema-drift.json').exists()

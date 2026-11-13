@@ -54,6 +54,9 @@ class BenchmarkConfig:
     execute: bool = False
     warm: bool = False
     timeout_seconds: float = 15.0
+    response_format_mode: str = "json_object"
+    max_tokens: int | None = None
+    runtime_metadata: dict | None = None
 
 
 def _canonical(value: Any) -> str:
@@ -148,6 +151,39 @@ def _validate_config(config: BenchmarkConfig) -> None:
         raise ValueError("Timeout must be between 0.1 and 60 seconds")
     if Path(config.input_path).resolve() == Path(config.out).resolve():
         raise ValueError("Output cannot replace input")
+    if not isinstance(config.response_format_mode, str) or config.response_format_mode not in {"json_object", "json_schema"}:
+        raise ValueError("Response format mode must be json_object or json_schema")
+    if config.max_tokens is not None and (type(config.max_tokens) is not int or not 1 <= config.max_tokens <= 16384):
+        raise ValueError("Max tokens must be an integer between 1 and 16384 or null")
+    _runtime_metadata(config.runtime_metadata)
+
+
+def _runtime_metadata(value: Any) -> dict:
+    """Validate declared settings, never infer the server's actual configuration."""
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError("Runtime metadata must be an object")
+    strings = {"runtime", "runtime_version", "quantization", "machine", "load_state", "memory_sampling"}
+    integers = {"context_tokens", "server_slots", "num_parallel", "max_loaded_models"}
+    allowed = strings | integers | {"served_model_digest", "total_ram_gib", "gpu_layers"}
+    if set(value) - allowed:
+        raise ValueError("Unknown runtime metadata fields")
+    for key, item in value.items():
+        if key in strings and (not isinstance(item, str) or not item.strip()):
+            raise ValueError("Runtime string settings must be nonempty")
+        if key in integers and (type(item) is not int or item < 1):
+            raise ValueError("Runtime count settings must be positive integers")
+        if key == "gpu_layers" and (type(item) is not int or item < 0):
+            raise ValueError("GPU layers must be a nonnegative integer")
+        if key == "total_ram_gib" and (type(item) not in (int, float) or not math.isfinite(item) or item <= 0):
+            raise ValueError("Runtime RAM must be finite and positive")
+        if key == "served_model_digest" and (not isinstance(item, str) or not re.fullmatch(r"(?:sha256:)?[0-9a-fA-F]{64}", item)):
+            raise ValueError("Served model digest must be a full SHA-256 identifier")
+    if "server_slots" in value and "num_parallel" in value and value["server_slots"] != value["num_parallel"]:
+        raise ValueError("Server slots and num_parallel declarations disagree")
+    _canonical(value)
+    return copy.deepcopy(value)
 
 
 def _public_url(value: str) -> str:
@@ -166,6 +202,7 @@ def _public_url(value: str) -> str:
 def _secrets(base_url: str) -> set[str]:
     values = {value for name, value in os.environ.items()
               if name.startswith(("LLM_", "OPENAI_", "OPENROUTER_", "CEREBRAS_"))
+              and name != "LLM_MAX_TOKENS"
               and any(word in name for word in ("KEY", "TOKEN", "SECRET", "PASSWORD")) and value}
     parsed = urlsplit(base_url)
     values.update(x for x in (parsed.username, parsed.password) if x)
@@ -326,6 +363,9 @@ def run_benchmark(config: BenchmarkConfig, *, parser_module: Any = None) -> dict
     if out.resolve().is_relative_to(cache_dir):
         raise ValueError("Report must be outside the managed cache directory")
     secrets = _secrets(config.base_url)
+    from ingestion.guest_generation import response_format, generation_schema_sha256, response_format_sha256
+    generation_format = response_format(config.response_format_mode)
+    declared_runtime = _runtime_metadata(config.runtime_metadata)
     identity = {
         "candidate": config.candidate, "revision": config.revision, "run_id": config.run_id,
         "workers": config.workers, "model": config.model, "endpoint_sha256": _digest(config.base_url.rstrip("/")),
@@ -334,6 +374,12 @@ def run_benchmark(config: BenchmarkConfig, *, parser_module: Any = None) -> dict
         "prompt_sha256": _digest(parser.SYSTEM_PROMPT), "schema_version": SCHEMA_VERSION,
         "schema_sha256": _digest(_canonical(GuestIntentV1.model_json_schema())),
         "timeout_seconds": config.timeout_seconds,
+        "response_format_mode": config.response_format_mode,
+        "generation_schema_sha256": generation_schema_sha256(),
+        "response_format_sha256": response_format_sha256(config.response_format_mode),
+        "response_format": generation_format,
+        "max_tokens": config.max_tokens,
+        "runtime_metadata_sha256": _digest(_canonical(declared_runtime)),
     }
     marker = cache_dir / _MARKER
     cache_identity = {"identity_sha256": _digest(_canonical(identity))}
@@ -346,7 +392,8 @@ def run_benchmark(config: BenchmarkConfig, *, parser_module: Any = None) -> dict
                     selected_count=len(selected), limit=config.limit, case_ids=[x["case_id"] for x in selected],
                     cache_dir=str(cache_dir), warm=config.warm,
                     transport_kind="injected_parser" if parser_module is not None else "configured_parser",
-                    measurement="Original _call_llm invocations; not server-confirmed HTTP requests")
+                    measurement="Original _call_llm invocations; not server-confirmed HTTP requests",
+                    runtime_metadata={"provenance": "operator_supplied_not_measured", "values": declared_runtime})
     summary = {"selected_count": len(selected), "completed_count": 0, "transport_calls": 0,
                "cache_lookups": 0, "cache_hits": 0, "live_llm": 0, "cache_llm": 0,
                "source_label": 0, "fallback": 0, "error": 0, "total_seconds": 0.0,
@@ -379,7 +426,9 @@ def run_benchmark(config: BenchmarkConfig, *, parser_module: Any = None) -> dict
                         metadata.write(_canonical(cache_identity))
                 environment = {"LLM_API_KEY": api_key, "LLM_BASE_URL": config.base_url,
                                "LLM_MODEL": config.model, "LLM_TIMEOUT_SECONDS": str(config.timeout_seconds),
-                               "GUEST_PARSER_CACHE_DIR": str(cache_dir)}
+                               "GUEST_PARSER_CACHE_DIR": str(cache_dir),
+                               "LLM_RESPONSE_FORMAT": config.response_format_mode,
+                               "LLM_MAX_TOKENS": "" if config.max_tokens is None else str(config.max_tokens)}
                 started = time.perf_counter()
                 with patch.dict(os.environ, environment):
                     report["results"] = _run_cases(config, selected, parser)
@@ -446,11 +495,20 @@ def main(argv: list[str] | None = None) -> int:
         cli.add_argument("--" + flag, required=True, type=Path)
     cli.add_argument("--workers", required=True, choices=(1, 6), type=int)
     cli.add_argument("--timeout-seconds", type=float, default=15.0)
+    cli.add_argument("--response-format-mode", choices=("json_object", "json_schema"), default="json_object")
+    cli.add_argument("--max-tokens", type=int, help="explicit output cap (1..16384); absent means no requested cap")
+    cli.add_argument("--runtime-metadata", type=Path, help="JSON file of operator-declared runtime settings, not measurements")
     cli.add_argument("--execute", action="store_true", help="permit configured parser transport calls")
     cli.add_argument("--warm", action="store_true", help="require matching cache metadata from a prior execution")
     args = cli.parse_args(argv)
     try:
-        report = run_benchmark(BenchmarkConfig(**vars(args)))
+        values = vars(args)
+        metadata_path = values["runtime_metadata"]
+        if metadata_path is not None:
+            values["runtime_metadata"] = json.loads(metadata_path.read_text(encoding="utf-8"), parse_constant=_invalid_constant)
+            if metadata_path.resolve() == args.out.resolve():
+                raise ValueError("Output cannot replace runtime metadata input")
+        report = run_benchmark(BenchmarkConfig(**values))
     except Exception as exc:
         print(f"Benchmark failed ({type(exc).__name__}).", file=sys.stderr)
         return 2

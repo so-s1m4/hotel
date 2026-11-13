@@ -29,11 +29,12 @@ from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 from common.contracts.schemas import ExtractionMetaV1, GuestIntentV1, SCHEMA_VERSION
+from ingestion.guest_generation import generation_schema, response_format
 
 __all__ = ["parse_request", "parse_request_full", "parse_requests_batch"]
 
 LOGGER = logging.getLogger(__name__)
-PARSER_VERSION = "1.0.4"  # bump invalidates cached extractions (1.0.4: date/cache guards)
+PARSER_VERSION = "1.1.0"  # generation envelope and opt-in schema-constrained transport
 PROMPT_VERSION = "guest-semantics-v1"
 MAX_RESPONSE_BYTES = 2_000_000
 MAX_INTENTS = 32
@@ -129,7 +130,14 @@ def _config() -> dict[str, Any]:
         timeout = min(60.0, max(0.1, float(os.environ.get("LLM_TIMEOUT_SECONDS", "15"))))
     except (ValueError, TypeError):
         timeout = 15.0
+    format_mode = os.environ.get("LLM_RESPONSE_FORMAT", "json_object").strip() or "json_object"
+    response_format(format_mode)  # Fail closed on unsupported configuration.
+    raw_cap = os.environ.get("LLM_MAX_TOKENS", "").strip()
+    max_tokens = int(raw_cap) if raw_cap else None
+    if max_tokens is not None and not 1 <= max_tokens <= 16384:
+        raise ValueError("LLM_MAX_TOKENS must be between 1 and 16384")
     return {"api_key": key, "base_url": base.rstrip("/"), "model": model,
+            "response_format_mode": format_mode, "max_tokens": max_tokens,
             "timeout": timeout,
             "offline": os.environ.get("GUEST_PARSER_OFFLINE", "").casefold() in {"1", "true", "yes", "on"}}
 
@@ -195,7 +203,9 @@ def _call_llm(messages: list[dict], config: dict) -> str:
     if not endpoint.endswith("/chat/completions"):
         endpoint += "/chat/completions"
     payload = {"model": config["model"], "messages": messages, "temperature": 0,
-               "response_format": {"type": "json_object"}}
+               "response_format": response_format(config.get("response_format_mode", "json_object"))}
+    if config.get("max_tokens") is not None:
+        payload["max_tokens"] = config["max_tokens"]
     req = urllib_request.Request(
         endpoint, data=_canonical(payload).encode("utf-8"), method="POST",
         headers={"Content-Type": "application/json", "Accept": "application/json",
@@ -206,7 +216,11 @@ def _call_llm(messages: list[dict], config: dict) -> str:
     if len(body) > MAX_RESPONSE_BYTES:
         raise ValueError("LLM response exceeds the size limit")
     envelope = json.loads(body)
-    content = envelope["choices"][0]["message"]["content"]
+    choice = envelope["choices"][0]
+    # A token-limited response can contain valid JSON while omitting intentions.
+    if "finish_reason" in choice and choice["finish_reason"] != "stop":
+        raise ValueError("LLM generation did not finish normally")
+    content = choice["message"]["content"]
     if isinstance(content, list):
         content = "".join(part["text"] for part in content
                           if isinstance(part, dict) and isinstance(part.get("text"), str))
@@ -542,7 +556,10 @@ def _cache_path(record: Mapping[str, Any], safe: Mapping[str, Any], config: Mapp
     material = {"source": record, "context": safe, "schema_version": SCHEMA_VERSION,
                 "schema": GuestIntentV1.model_json_schema(), "parser_version": PARSER_VERSION,
                 "prompt_version": PROMPT_VERSION, "prompt": SYSTEM_PROMPT,
-                "model": config["model"], "base_url": config["base_url"]}
+                "model": config["model"], "base_url": config["base_url"],
+                "generation_schema": generation_schema(),
+                "response_format": response_format(config.get("response_format_mode", "json_object")),
+                "max_tokens": config.get("max_tokens")}
     key = hashlib.sha256(_canonical(material).encode("utf-8")).hexdigest()
     return Path(os.environ.get("GUEST_PARSER_CACHE_DIR", ".cache/guest_parser")) / (key + ".json")
 
@@ -623,7 +640,7 @@ def parse_request_full(record: dict, context: dict | None = None) -> tuple[list[
         if not isinstance(text, str) or not text.strip():
             return _fallback(source, "fallback", "missing_text", config["model"])
         messages = [
-            {"role": "system", "content": SYSTEM_PROMPT + "\nSchema: " + _canonical(GuestIntentV1.model_json_schema())},
+            {"role": "system", "content": SYSTEM_PROMPT + "\nSchema: " + _canonical(generation_schema())},
             {"role": "user", "content": _canonical({"guest_record": dict(source), "known_context": safe})},
         ]
         raw = _decode(_call_llm(messages, config))
