@@ -291,3 +291,22 @@ def test_evaluation_snapshots_reused_gateway_event_before_group_lookahead():
     report=evaluate_replay(repo,BUILDING,{"candidate":NoRule})
     assert report["ticks_evaluated"] == 2
     assert report["last_tick_utc"] == NOW
+
+
+@pytest.mark.parametrize("created,excluded",[("2026-01-06T00:37:00Z",1),("2026-01-06T00:46:00Z",0)])
+def test_endpoint_work_scope_uses_scan_knowledge_not_endpoint_knowledge(created,excluded):
+    repo=exposure_repo()
+    # Reproduce 00:30 -> 00:45: order becomes known inside the pair,
+    # and its inclusive effective window ends exactly at the left endpoint.
+    for rows in list(repo.measurements.values())+list(repo.states.values()):
+        for row in rows:
+            for key in ("timestamp_utc","last_observed_utc"):
+                if row.get(key):
+                    row[key]=utc(instant(row[key])-timedelta(minutes=75))
+    orders=[{"work_order_id":"WO1","created_utc":created,"asset_id":"R101",
+             "scheduled_utc":"2026-01-05T22:30:00Z","summary":"planned tap flushing"}]
+    profile=ExposureProfile(BUILDING,EngineConfig())
+    profile.observe("2026-01-06T00:45:00Z",repo,orders)
+    report=profile.report()
+    assert report["primary_eligibility_exclusions"].get("known_planned_water_work",0) == excluded
+    assert report["counts"]["eligible_nonnegative_night_intervals"] == 2-excluded

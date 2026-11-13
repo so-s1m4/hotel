@@ -148,14 +148,14 @@ def _strict_window(readings, now, maximum):
     return True
 
 
-def _planned_water_work(room, now, orders):
+def _planned_water_work(room, effective_at, orders, *, known_at):
     for order in orders:
-        if not order.get("created_utc") or _time(order["created_utc"]) > _time(now):
+        if not order.get("created_utc") or _time(order["created_utc"]) > _time(known_at):
             continue
         scheduled = order.get("scheduled_utc")
         summary = str(order.get("summary") or "").casefold()
         applies = order.get("asset_id") in {room, "WM_"+room} or room.casefold() in summary
-        if (applies and scheduled and 0 <= (_time(now)-_time(scheduled)).total_seconds() <= 7200
+        if (applies and scheduled and 0 <= (_time(effective_at)-_time(scheduled)).total_seconds() <= 7200
                 and any(word in summary for word in ("flush", "meter", "legionella", "tap"))):
             return True
     return False
@@ -223,7 +223,7 @@ class ExposureProfile:
                 transition = any(room in {r.get("room_id"),r.get("from_room"),r.get("to_room")}
                                  and _time(readings[-2]["timestamp_utc"]) < _time(r["timestamp_utc"]) <= _time(now)
                                  and r.get("type") in {"checkin","checkin_early","checkin_after_wait","checkout","checkout_early","room_reassigned","stay_in_progress"} for r in recent)
-                work = any(_planned_water_work(room,row["timestamp_utc"],orders) for row in readings[-2:])
+                work = any(_planned_water_work(room,row["timestamp_utc"],orders,known_at=now) for row in readings[-2:])
                 if vacant:
                     self.distributions["observed_vacant_night_pairs_before_operation_exclusions"].add(delta)
                     if room in cleaners or work:

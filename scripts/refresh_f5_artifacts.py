@@ -9,7 +9,9 @@ and outputs/f5_paired_evaluation.json:
 The command independently rereads raw CSV interval availability and validates the
 existing outputs. It refuses to publish if source/config/data hashes drift, tests
 report failure, or any of the 44 per-profile checks fail. The manifest is replaced
-last. No decisions, audit logs, detector code or primary submission are changed.
+last. Consumers must verify every artifact hash against that manifest; an I/O
+failure during replacement can leave an incomplete generation. No decisions,
+audit logs, detector code or primary submission are changed.
 """
 from __future__ import annotations
 
@@ -284,7 +286,8 @@ def main():
     try:
         report=refresh_artifacts(args.data_root,args.output_dir,args.review_dir,args.paired,args.preflight_only)
     except (ArtifactCheckError,OSError,ValueError,KeyError,TypeError) as exc:
-        print(json.dumps({"all_checks_passed":False,"artifacts_written":False,"error":str(exc)},ensure_ascii=False),file=sys.stderr)
+        print(json.dumps({"all_checks_passed":False,"publication_complete":False,
+                          "artifacts_may_have_changed":isinstance(exc,OSError),"error":str(exc)},ensure_ascii=False),file=sys.stderr)
         return 1
     print(json.dumps({"preflight_only":args.preflight_only,"checks":report.get("check_count"),
                       "passed":report.get("all_checks_passed",report.get("preflight_passed")),
