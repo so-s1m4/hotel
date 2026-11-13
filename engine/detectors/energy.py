@@ -54,6 +54,24 @@ class EnergyDetector:
                     result.resolved.add(key)
             else:
                 self.healthy_counts[key] = 0
+            if all(v > high for v in values):
+                states = [room_state(repo, room, r["timestamp_utc"]) for r in rows]
+                if not all(s.get("occupancy") == "occupied" for s in states):
+                    continue
+                setpoint = number(rows[-1].get("setpoint_c"))
+                reduce = setpoint is not None and setpoint > high
+                context = {"room": states[-1]}
+                if reduce:
+                    context["setpoint_c"] = high
+                result.candidates.append(Candidate(key, room, "heating_comfort", "adjust_room_setpoint" if reduce else "notify_guest",
+                    f"Occupied temperature above {high} °C for {self.config.cold_window_minutes} min ({min(values):.2f}–{max(values):.2f} °C). " +
+                    (f"Reduce excessive heating setpoint to {high} °C within comfort limits; this is not active cooling." if reduce else
+                     "Heating-only plant cannot actively cool; propose a ventilation/window check and investigate persistent overheating."),
+                    [f"room_telemetry.csv:{room}:{rows[0]['timestamp_utc']}..{now}", *states[-1].get("evidence", [])],
+                    "Verify observed temperature and guest comfort; escalate persistent overheating without claiming mechanical cooling.",
+                    "Reduce further heat input or propose guest assistance; no simulated cooling is reported as measured.",
+                    priority="high" if max(values) > high+2 else "medium", context=context, variant="overheating"))
+                continue
             if not all(v < low for v in values):
                 continue
             states = [room_state(repo, room, r["timestamp_utc"]) for r in rows]

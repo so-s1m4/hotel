@@ -1,5 +1,7 @@
 """Simulation audit only. Never writes to a gateway or infers consent from a request."""
 from copy import deepcopy
+from datetime import timedelta
+from engine.core import instant, utc
 
 from common.contracts.schemas import DecisionRecordV2
 from engine.safety import SafetyViolation, validate_safety
@@ -28,9 +30,14 @@ class MockExecutor:
                 context["calendar"].reserve(decision.resource_id, context["start_utc"], context["end_utc"],
                                             decision.event_id, decision.timestamp_utc, room=context.get("room", {}).get("room_id")
                                             if context.get("entry_required") else None)
+            if decision.action == "optimize_energy":
+                end = utc(instant(decision.timestamp_utc) + timedelta(minutes=context["duration_minutes"]))
+                context["calendar"].reserve("asset:BAT1", decision.timestamp_utc, end, decision.event_id, decision.timestamp_utc)
+            if decision.action == "dispatch_robot" and context.get("task") == "carry_bin":
+                context["calendar"].reserve_volume(context["destination_bin"]["id"], context["transfer_liters"], decision.event_id)
         record = {"decision_id": decision.event_id, "timestamp_utc": decision.timestamp_utc,
                   "status": status, "action": decision.action, "simulated": True,
-                  "parameters": {k: context[k] for k in ("start_utc", "end_utc", "setpoint_c", "task") if k in context},
+                  "parameters": {k: context[k] for k in ("start_utc", "end_utc", "setpoint_c", "task", "battery_power_kw", "duration_minutes", "expected_soc_kwh", "transfer_liters", "service", "lead_hours") if k in context},
                   "observed_history_changed": False}
         self._submitted[decision.event_id] = encoded
         self.audit.append(record)

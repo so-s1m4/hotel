@@ -1,5 +1,6 @@
 """Fail-closed safety checks shared by the planner and the mock executor."""
 from datetime import timedelta
+from math import sqrt, isclose
 
 from common.contracts.schemas import DecisionRecordV2
 from engine.core import instant, number, VIENNA
@@ -67,7 +68,7 @@ def validate_safety(decision: DecisionRecordV2, context: dict) -> None:
         require(room.get("blocked") is False, "No block must be explicitly verified")
         require(room.get("inspection_required") is False or room.get("inspection_passed") is True, "Inspection requirement must be resolved")
         require(not decision.resource_id or not decision.resource_id.startswith("ROBOT"), "Robots cannot certify release")
-    if decision.action in {"schedule_cleaning", "dispatch_robot"}:
+    if room_action and decision.action in {"schedule_cleaning", "dispatch_robot"}:
         require(occupancy == "vacant", "Do not schedule cleaning/robots into occupied or unknown rooms")
     if decision.action == "adjust_room_setpoint":
         target = number(context.get("setpoint_c"))
@@ -76,10 +77,52 @@ def validate_safety(decision: DecisionRecordV2, context: dict) -> None:
         require(occupancy in {"occupied", "vacant"}, "Occupancy must be verified before setpoint control")
         require((low <= target <= high) if occupancy == "occupied" else (18 <= target <= high), "Setpoint violates comfort/safe setback limits")
     if decision.action == "optimize_energy":
-        # The mandatory scenarios do not implement a battery/load optimiser.
-        require(False, "Energy optimisation has no implemented constraint solver")
+        battery = context.get("battery", {})
+        catalog = {a["id"]: a for a in building["building"].get("assets", [])}
+        require(decision.affected_assets == ["BAT1"] and battery == catalog.get("BAT1"), "Use actual battery capabilities")
+        row = context.get("observed_energy", {})
+        power = number(context.get("battery_power_kw"))
+        duration = number(context.get("duration_minutes"))
+        soc = number(row.get("battery_soc_kwh"))
+        require(row.get("timestamp_utc") is not None and instant(decision.timestamp_utc)-timedelta(minutes=15) <= instant(row["timestamp_utc"]) <= instant(decision.timestamp_utc), "Fresh observed battery state is required")
+        require(power is not None and duration is not None and 0 < duration <= 15 and soc is not None, "Invalid battery action parameters")
+        eta = number(battery.get("round_trip_efficiency"))
+        bounds = battery.get("soc_bounds_kwh", [])
+        charge, discharge = number(battery.get("max_charge_kw")), number(battery.get("max_discharge_kw"))
+        require(eta is not None and 0 < eta <= 1 and charge is not None and charge > 0 and discharge is not None and discharge > 0 and len(bounds) == 2 and 0 <= bounds[0] < bounds[1], "Battery limits are incomplete")
+        require(-charge <= power <= discharge and bounds[0] <= soc <= bounds[1], "Battery power or initial SOC out of bounds")
+        expected = soc - power*duration/60/sqrt(eta) if power >= 0 else soc - power*duration/60*sqrt(eta)
+        supplied = number(context.get("expected_soc_kwh"))
+        require(bounds[0]-1e-8 <= expected <= bounds[1]+1e-8 and supplied is not None and isclose(expected, supplied, abs_tol=1e-6), "Projected SOC violates bounds or accounting")
+        fields = {k: number(row.get(k)) for k in ("building_load_kw", "hvac_electric_kw", "pv_kw", "battery_discharge_kw_signed", "grid_import_kw", "grid_export_kw")}
+        require(all(v is not None for v in fields.values()), "Energy balance observations are missing")
+        require(all(fields[k] >= 0 for k in ("building_load_kw", "hvac_electric_kw", "pv_kw", "grid_import_kw", "grid_export_kw")), "Invalid energy measurements")
+        require(fields["hvac_electric_kw"] <= fields["building_load_kw"] + 0.1, "HVAC exceeds whole-building load")
+        balance = fields["grid_import_kw"] + fields["pv_kw"] + fields["battery_discharge_kw_signed"] - fields["building_load_kw"] - fields["grid_export_kw"]
+        require(abs(balance) <= max(1, fields["building_load_kw"]*0.05), "Observed energy balance is inconsistent")
+        require(context.get("strategy") in {"pv_charge", "cheap_charge", "peak_discharge"}, "Unknown battery strategy")
+        calendar = context.get("calendar")
+        end = instant(decision.timestamp_utc) + timedelta(minutes=duration)
+        require(calendar is not None and calendar.available("asset:BAT1", decision.timestamp_utc, end.isoformat().replace("+00:00", "Z"), decision.timestamp_utc), "Battery already has a dispatch for this interval")
     if decision.action == "dispatch_robot":
         require(context.get("task") in {"floor_cleaning", "carry_bin"}, "Robot capability exceeded")
+        if not room_action:
+            require(context.get("task") == "carry_bin" and context.get("common_area_route") is True, "Only verified common-area bin routes are supported")
+            source, destination = context.get("source_bin", {}), context.get("destination_bin", {})
+            catalog = {a["id"]: a for a in building["building"].get("assets", [])}
+            require(source == catalog.get(source.get("id")) and destination == catalog.get(destination.get("id")) and source.get("id") in decision.affected_assets, "Unknown bin capabilities")
+            src, dst = context.get("source_observation", {}), context.get("destination_observation", {})
+            for obs, asset in ((src, source), (dst, destination)):
+                require(obs.get("asset_id") == asset.get("id") and obs.get("metric") == "fill_pct", "Bin observation mismatch")
+                require(obs.get("timestamp_utc") is not None and instant(decision.timestamp_utc)-timedelta(minutes=60) <= instant(obs["timestamp_utc"]) <= instant(decision.timestamp_utc), "Stale bin observation")
+                value = number(obs.get("value"))
+                require(value is not None and 0 <= value <= 100, "Invalid bin fill")
+            volume, capacity = number(source.get("volume_l")), number(destination.get("volume_l"))
+            transfer, limit_pct = number(context.get("transfer_liters")), number(context.get("container_max_fill_pct"))
+            require(volume is not None and volume > 0 and capacity is not None and capacity > 0 and transfer is not None and transfer > 0 and limit_pct is not None and 0 < limit_pct <= 100, "Bin capacities missing")
+            require(isclose(transfer, volume*float(src["value"])/100, abs_tol=1e-6), "Incorrect transfer volume")
+            calendar = context.get("calendar")
+            require(calendar is not None and calendar.capacity_available(destination["id"], capacity*float(dst["value"])/100, capacity*limit_pct/100, transfer), "Central container capacity exceeded")
     if decision.resource_id:
         resources = {r["resource_id"]: r["role"] for r in building.get("staff", {}).get("resources", [])}
         require(decision.resource_id in resources, "Unknown resource")
@@ -99,6 +142,8 @@ def validate_safety(decision: DecisionRecordV2, context: dict) -> None:
             require(instant(slot["start_utc"]) <= instant(start) and instant(end) <= instant(slot["end_utc"]), "Reservation outside actual shift")
             if decision.action in {"schedule_cleaning", "request_inspection"}:
                 require(resources[decision.resource_id] == "cleaner", "Only human cleaners may certify housekeeping")
+            if decision.action == "dispatch_technician":
+                require(resources[decision.resource_id] == "technician", "Technician role required")
             if decision.action == "dispatch_robot":
                 require(resources[decision.resource_id] == "robot", "Robot action requires robot resource")
         calendar = context.get("calendar")

@@ -15,6 +15,7 @@ def scheduled(slot: dict, now: str) -> bool:
 class ResourceCalendar:
     def __init__(self):
         self.reservations: dict[str, list[tuple[str, str, str]]] = {}
+        self.volume_reservations: dict[str, list[tuple[str, float]]] = {}
         self.room_reservations: dict[str, list[tuple[str, str, str]]] = {}
 
     def available(self, resource: str, start: str, end: str, now: str) -> bool:
@@ -28,7 +29,17 @@ class ResourceCalendar:
         return all(instant(end) <= instant(a) or instant(start) >= instant(b)
                    for a, b, _ in self.room_reservations[room])
 
+    def capacity_available(self, destination: str, observed_l: float, limit_l: float, extra_l: float) -> bool:
+        return observed_l + sum(amount for _, amount in self.volume_reservations.get(destination, [])) + extra_l <= limit_l + 1e-8
+
+    def reserve_volume(self, destination: str, amount: float, decision_id: str):
+        self.volume_reservations.setdefault(destination, []).append((decision_id, amount))
+
+    def release_volume(self, decision_id: str):
+        for destination in self.volume_reservations:
+            self.volume_reservations[destination] = [r for r in self.volume_reservations[destination] if r[0] != decision_id]
     def cancel(self, decision_id: str):
+        self.release_volume(decision_id)
         for collection in (self.reservations, self.room_reservations):
             for key in collection:
                 collection[key] = [r for r in collection[key] if r[2] != decision_id]
@@ -42,13 +53,13 @@ class ResourceCalendar:
         if room:
             self.room_reservations.setdefault(room, []).append((start, end, decision_id))
 
-    def first_slot(self, slots: list[dict], now: str, until: str, duration: int, room: str | None = None):
+    def first_slot(self, slots: list[dict], now: str, until: str, duration: int, room: str | None = None, role: str = "cleaner", earliest: str | None = None):
         choices = []
         for slot in slots:
-            if slot.get("role") != "cleaner" or not scheduled(slot, now):
+            if slot.get("role") != role or not scheduled(slot, now):
                 continue
             resource = slot["resource_id"]
-            begin = max(instant(now), instant(slot["start_utc"]))
+            begin = max(instant(now), instant(slot["start_utc"]), instant(earliest or now))
             latest = min(instant(until), instant(slot["end_utc"]))
             # Try shift start and ends of already-reserved intervals.
             starts = [begin] + [instant(b) for a, b, _ in self.reservations.get(resource, [])

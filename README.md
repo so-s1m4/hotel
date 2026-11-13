@@ -4,8 +4,10 @@
 Обработка исторических данных → обнаружение риска → решение → согласование →
 симуляция действия → проверка → рекомендации по эксплуатации и проектированию.
 
-**Статус: engine S01–S03 реализован и проверен на offline scenario fixtures.**
+**Статус: engine S01–S05, батарея/PV и логистика реализован и проверен на offline scenario fixtures.**
 Работают детекторы, планирование, safety gate, mock executor и официальный JSONL.
+Годовой Dev уже проанализирован: [insights.md](insights.md),
+[измеренные метрики и SHA-256](docs/analysis_dev.json).
 Полный replay Quickstart/Dev ожидает реализацию `ingestion.ReplayData` Лёшей.
 Также доступны распаковка, аудит данных, проверка входных файлов и тесты контрактов.
 Алгоритмы и ограничения описаны в [docs/ENGINE.md](docs/ENGINE.md).
@@ -42,7 +44,7 @@ common/                 исходные общие контракты v1.0, п�
   contracts/api.py      ReplayDataGateway: исторические запросы
   contracts/schemas.py  NormalizedEventV1 → DecisionRecordV2
 ingestion/             Лёша: загрузка, индексы, causal replay, LLM-парсер
-engine/                Максим: детекторы S01–S03, планирование, safety, mock execution
+engine/                Максим: S01–S05, энергия, логистика, годовой анализ, планирование, safety, mock execution
 tests/ingestion/       тесты слоя данных
 tests/engine/          тесты движка на fixtures без готового ingestion
 tests/integration/     общие end-to-end тесты после интеграции
@@ -82,10 +84,22 @@ python run.py --data-dir data/PLATO40_v2_dev --out decisions.jsonl
 не перезаписывая результат.** Engine не заменяет отсутствующий ingestion тестовой заглушкой.
 Дополнительно: `--audit outputs/audit.jsonl`, `--insights outputs/summary.md`,
 `--config engine_config.json`. Сводка решений не заменяет годовой анализ Level 3.
-`decisions.jsonl`, `decisions_holdout.jsonl`, `insights.md` должны появиться после
-реального запуска и анализа; образцы организатора не являются решениями нашей команды.
+Для measured report после replay: `--annual-insights outputs/insights.md`.
+`decisions.jsonl` и `decisions_holdout.jsonl` должны появиться после
+реального запуска; `insights.md` уже получен прямым ретроспективным анализом Dev; образцы организатора не являются решениями нашей команды.
 `pre-holdout` ставить на проверенную версию перед официальным выпуском holdout,
 а не на этот каркас. Детали сдачи — в `docs/source/CHALLENGE.md`, §8–10.
+
+## Годовой анализ без готового ingestion
+
+```bash
+python -m engine.annual --data-dir data/PLATO40_v2_dev \
+  --out insights.md --json docs/analysis_dev.json
+```
+
+Это отдельный ретроспективный анализ исходных наблюдений. Он не используется
+детекторами как источник будущих сведений. Измеренная стоимость энергии не
+выдаётся за экономию, остаток общего водомера — за подтверждённую утечку.
 
 ## Ограничения и лицензии
 

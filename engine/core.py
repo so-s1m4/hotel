@@ -85,12 +85,21 @@ class EngineConfig:
     cold_window_minutes: int = 30
     cold_forecast_c: float = 0.0
     low_cop: float = 1.7
+    filter_dp_pa: float = 250
+    ahu_flow_fraction: float = 0.75
+    technician_minutes: int = 60
+    robot_minutes: int = 20
+    surge_arrival_fraction: float = 0.4
+    waste_trigger_pct: float = 80
+    container_max_fill_pct: float = 95
+    vending_low_fraction: float = 0.2
+    battery_price_spread: float = 0.08
 
     def __post_init__(self):
         for name, value in self.__dict__.items():
             if isinstance(value, bool) or not isinstance(value, (int, float)) or number(value) is None:
                 raise ValueError(f"{name} must be a finite number")
-        for name in ("cleaning_minutes", "inspection_minutes", "telemetry_max_age_minutes", "water_window_minutes", "cold_window_minutes"):
+        for name in ("cleaning_minutes", "inspection_minutes", "telemetry_max_age_minutes", "water_window_minutes", "cold_window_minutes", "technician_minutes", "robot_minutes"):
             value = getattr(self, name)
             if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
                 raise ValueError(f"{name} must be a positive integer")
@@ -102,6 +111,14 @@ class EngineConfig:
             raise ValueError("Invalid room-water thresholds")
         if self.main_residual_min_l_per_interval <= 0 or self.low_cop <= 0:
             raise ValueError("Residual and COP thresholds must be positive")
+        if self.filter_dp_pa <= 0 or not 0 < self.ahu_flow_fraction < 1:
+            raise ValueError("Invalid AHU thresholds")
+        if not 0 < self.surge_arrival_fraction <= 1 or not 0 < self.vending_low_fraction < 1:
+            raise ValueError("Invalid demand fractions")
+        if not 0 < self.waste_trigger_pct < self.container_max_fill_pct <= 100:
+            raise ValueError("Invalid waste thresholds")
+        if self.battery_price_spread <= 0:
+            raise ValueError("Battery spread must be positive")
 
 
 @dataclass

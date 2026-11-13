@@ -1,4 +1,4 @@
-"""Replay S01–S03 through the team's causal gateway; --check only validates inputs."""
+"""Replay S01–S05, energy optimisation and logistics through the team's causal gateway; --check only validates inputs."""
 import argparse
 from dataclasses import asdict
 import json
@@ -14,6 +14,7 @@ def main() -> int:
     parser.add_argument("--check", action="store_true", help="check inputs only; no decisions produced")
     parser.add_argument("--audit", type=Path, help="mock execution JSONL (default: next to decisions)")
     parser.add_argument("--insights", type=Path, help="write an evidence-linked run summary")
+    parser.add_argument("--annual-insights", type=Path, help="measured retrospective report plus companion JSON, after replay")
     parser.add_argument("--config", type=Path, help="JSON overrides of engine.core.EngineConfig defaults")
     args = parser.parse_args()
     try:
@@ -26,6 +27,8 @@ def main() -> int:
     audit = args.audit or args.out.with_name(args.out.stem + "_audit.jsonl")
     rejection_path = args.out.with_name(args.out.stem + "_rejections.jsonl")
     destinations = [args.out, audit, rejection_path] + ([args.insights] if args.insights else [])
+    if args.annual_insights:
+        destinations += [args.annual_insights, args.annual_insights.with_suffix(".json")]
     if len({p.resolve() for p in destinations}) != len(destinations):
         parser.exit(2, "Output paths must be distinct.\n")
     if any(p.resolve().is_relative_to(args.data_dir.resolve()) for p in destinations):
@@ -40,6 +43,10 @@ def main() -> int:
         config = EngineConfig(**json.loads(args.config.read_text(encoding="utf-8"))) if args.config else EngineConfig()
         engine = DecisionEngine(ReplayData(args.data_dir), building, config)
         records = engine.run()
+        annual = None
+        if args.annual_insights:
+            from engine.annual import analyze_dataset, render_report
+            annual = analyze_dataset(args.data_dir)
     except NotImplementedError as exc:
         parser.exit(2, f"Replay gateway is not implemented yet: {exc}. Engine scenario tests run independently; use --check for input preflight.\n")
     except (ValueError, KeyError, OSError, TypeError) as exc:
@@ -51,6 +58,10 @@ def main() -> int:
     if args.insights:
         args.insights.parent.mkdir(parents=True, exist_ok=True)
         args.insights.write_text(generate_insights(records, metadata), encoding="utf-8")
+    if args.annual_insights:
+        args.annual_insights.parent.mkdir(parents=True, exist_ok=True)
+        args.annual_insights.write_text(render_report(annual), encoding="utf-8")
+        args.annual_insights.with_suffix(".json").write_text(json.dumps(annual, ensure_ascii=False, indent=2)+"\n", encoding="utf-8")
     print(json.dumps({"status": "replay_complete", "events": engine.event_count,
                       "decisions": len(records), "safety_rejections": len(engine.rejections),
                       "out": str(args.out), "audit": str(audit), "config": asdict(config)}, indent=2))
