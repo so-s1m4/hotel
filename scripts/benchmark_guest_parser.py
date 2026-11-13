@@ -147,7 +147,8 @@ def _validate_config(config: BenchmarkConfig) -> None:
     endpoint.port  # Validate the configured port before any work.
     if not isinstance(config.model, str) or not config.model.strip():
         raise ValueError("Explicit model identifier required")
-    if not math.isfinite(config.timeout_seconds) or not 0.1 <= config.timeout_seconds <= 60:
+    if (type(config.timeout_seconds) not in (int, float)
+            or not math.isfinite(config.timeout_seconds) or not 0.1 <= config.timeout_seconds <= 60):
         raise ValueError("Timeout must be between 0.1 and 60 seconds")
     if Path(config.input_path).resolve() == Path(config.out).resolve():
         raise ValueError("Output cannot replace input")

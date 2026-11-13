@@ -57,7 +57,7 @@ def parser(monkeypatch,tmp_path):
     def block_network(*args,**kwargs):
         attempted.append(True)
         raise AssertionError('Transport tests must never open a real connection')
-    monkeypatch.setattr(module.urllib_request,'urlopen',block_network)
+    monkeypatch.setattr(module,'_open_llm',block_network)
     monkeypatch.setattr(socket,'create_connection',block_network)
     monkeypatch.setattr(socket.socket,'connect',block_network)
     monkeypatch.setattr(socket.socket,'connect_ex',block_network)
@@ -74,7 +74,7 @@ def install_transport(parser,monkeypatch,body=None):
         response=Response(envelope() if body is None else body)
         responses.append(response)
         return response
-    monkeypatch.setattr(parser.urllib_request,'urlopen',transport)
+    monkeypatch.setattr(parser,'_open_llm',transport)
     return calls,responses
 
 
@@ -205,13 +205,13 @@ def test_oversized_http_body_stops_at_bounded_read_without_cache(parser,monkeypa
 def test_transport_error_logging_does_not_include_url_credentials_body_or_guest_text(parser,monkeypatch,tmp_path,caplog):
     secret='SYNTHETIC-URL-CREDENTIAL'
     sensitive_guest='SYNTHETIC-GUEST-PRIVATE-TEXT'
-    monkeypatch.setenv('LLM_BASE_URL','http://dummy:'+secret+'@127.0.0.1:11434/v1')
+    monkeypatch.setenv('LLM_BASE_URL','http://127.0.0.1:11434/v1?token='+secret)
     record={**RECORD,'text':sensitive_guest}
     calls=[]
     def fail(request,timeout):
         calls.append(request)
         raise HTTPError(request.full_url,500,'synthetic-local-key '+sensitive_guest,None,None)
-    monkeypatch.setattr(parser.urllib_request,'urlopen',fail)
+    monkeypatch.setattr(parser,'_open_llm',fail)
     with caplog.at_level(logging.DEBUG,logger=parser.__name__):
         _,meta=parser.parse_request_full(record,CONTEXT)
     assert len(calls)==1 and meta.method=='fallback'
@@ -234,7 +234,7 @@ def test_same_key_concurrent_timeouts_cannot_poison_a_successful_atomic_cache(pa
             return Response(envelope())
         assert saved.wait(5),'successful cache writer must be able to finish independently'
         raise TimeoutError('injected local model queue timeout')
-    monkeypatch.setattr(parser.urllib_request,'urlopen',transport)
+    monkeypatch.setattr(parser,'_open_llm',transport)
     def run(_):
         result=parser.parse_request_full(deepcopy(RECORD),deepcopy(CONTEXT))
         if result[1].method=='llm':

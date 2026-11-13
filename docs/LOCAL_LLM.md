@@ -33,6 +33,9 @@ export LLM_TIMEOUT_SECONDS='15'
 явный `finish_reason`, отличный от `stop`, дают fallback с review.
 Ответ без `finish_reason` поддерживается для совместимости backend.
 Schema не отменяет проверку evidence, времени и остальных ограничений на host.
+Авторизованные запросы не следуют HTTP redirects. Provider alias может передать
+свой ключ только при совпадении scheme, hostname и effective port; credentials
+в самом URL отклоняются до обращения к серверу.
 
 ## Отдельный план и выполнение
 

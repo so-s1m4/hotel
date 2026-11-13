@@ -29,7 +29,7 @@ def parser(monkeypatch, tmp_path):
         network_calls.append(True)
         raise AssertionError("Cache recovery tests must never use the network")
 
-    monkeypatch.setattr(module.urllib_request, "urlopen", block_network)
+    monkeypatch.setattr(module, "_open_llm", block_network)
     monkeypatch.setattr(socket, "create_connection", block_network)
     monkeypatch.setattr(socket.socket, "connect", block_network)
     yield module

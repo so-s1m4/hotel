@@ -25,16 +25,16 @@ import unicodedata
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Iterable, Mapping, get_args
 from urllib import request as urllib_request
-from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 from common.contracts.schemas import ExtractionMetaV1, GuestIntentV1, SCHEMA_VERSION
 from ingestion.guest_generation import generation_schema, response_format
+from ingestion.llm_transport import open_llm as _open_llm, origin
 
 __all__ = ["parse_request", "parse_request_full", "parse_requests_batch"]
 
 LOGGER = logging.getLogger(__name__)
-PARSER_VERSION = "1.1.0"  # generation envelope and opt-in schema-constrained transport
+PARSER_VERSION = "1.1.1"  # source clock boundaries/alternatives and constrained transport
 PROMPT_VERSION = "guest-semantics-v2"
 MAX_RESPONSE_BYTES = 2_000_000
 MAX_INTENTS = 32
@@ -123,13 +123,14 @@ def _config() -> dict[str, Any]:
         if generic_base:
             # A provider alias must never send its key to an unrelated endpoint.
             # Custom endpoints require an explicit LLM_API_KEY.
-            host = urlsplit(generic_base).hostname
-            choices = [provider for provider in providers if urlsplit(provider[2]).hostname == host]
+            endpoint_origin = origin(generic_base)
+            choices = [provider for provider in providers if origin(provider[2]) == endpoint_origin]
         complete = [provider for provider in choices if provider[0] and provider[1]]
         configured = [provider for provider in choices if provider[0]]
         key, model, base = next(iter(complete or configured or choices), ("", generic_model, generic_base or "https://api.openai.com/v1"))
         if generic_base:
             base = generic_base
+    origin(base)  # Reject invalid endpoints even when cache or credentials exist.
     # A model is deliberately explicit: provider model catalogues change.
     try:
         timeout = min(60.0, max(0.1, float(os.environ.get("LLM_TIMEOUT_SECONDS", "15"))))
@@ -216,7 +217,7 @@ def _call_llm(messages: list[dict], config: dict) -> str:
         headers={"Content-Type": "application/json", "Accept": "application/json",
                  "Authorization": "Bearer " + config["api_key"]},
     )
-    with urllib_request.urlopen(req, timeout=config["timeout"]) as response:
+    with _open_llm(req, timeout=config["timeout"]) as response:
         body = response.read(MAX_RESPONSE_BYTES + 1)
     if len(body) > MAX_RESPONSE_BYTES:
         raise ValueError("LLM response exceeds the size limit")
@@ -314,6 +315,8 @@ def _clock(text: str) -> tuple[time | None, bool]:
             folded = re.sub(pattern, " ", folded)
     if _VAGUE_TIME.search(folded) or re.search(r"\d{1,2}:\d{2}\s*[-–—]\s*\d", folded):
         return None, approximate
+    if re.search(r"[+-]\d{1,2}[:h]\d{2}|\d{1,2}[:h]\d{2}[.:]\d", folded):
+        return None, approximate  # unsupported sign/seconds/fraction, never truncate
     matches = list(re.finditer(r"(?<!\d)([01]?\d|2[0-3])[:h]([0-5]\d)(?!\d)\s*(a\.?m\.?|p\.?m\.?)?", folded))
     values: set[tuple[int, int]] = set()
     for match in matches:
@@ -382,8 +385,9 @@ def _source_date_scope(original: str, start: int, end: int, language: str,
                        message_time: datetime | None) -> str | None:
     """Return source context for a complete quote occurrence, not a fragment."""
     # A literal substring is insufficient if it cuts digits from a clock token.
-    if ((start and original[start].isdigit() and original[start - 1].isdigit())
-            or (end < len(original) and original[end - 1].isdigit() and original[end].isdigit())):
+    if ((start and original[start].isdigit() and (original[start - 1].isdigit() or original[start - 1] in "+-:"))
+            or (end < len(original) and original[end - 1].isdigit()
+                and (original[end].isdigit() or re.match(r"[.:]\d", original[end:])))):
         return None
     if start and original[start].isalpha() and (original[start - 1].isalnum() or original[start - 1] == "_"):
         return None

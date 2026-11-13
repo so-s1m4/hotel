@@ -699,7 +699,7 @@ def test_real_openai_compatible_transport_with_mocked_http(parser, record, conte
         requests.append((request, timeout))
         return Response()
 
-    monkeypatch.setattr(parser.urllib_request, "urlopen", open_mock)
+    monkeypatch.setattr(parser, "_open_llm", open_mock)
     result, meta = parser.parse_request_full(record, context)
     assert_contract(record, result, meta)
     assert meta.method == "llm" and result[0]["requested_time_utc"] == "2026-01-06T12:00:00Z"

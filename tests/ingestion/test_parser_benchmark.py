@@ -492,6 +492,7 @@ def test_default_generation_mode_clears_inherited_cap_without_claiming_server_me
 
 
 @pytest.mark.parametrize('changes', [
+    {'timeout_seconds': True}, {'timeout_seconds': '15'},
     {'response_format_mode': 'text'}, {'max_tokens': True}, {'max_tokens': 0}, {'max_tokens': 16385},
     {'runtime_metadata': {'served_model_digest': 'latest'}},
     {'runtime_metadata': {'api_key': 'never-record-credentials'}},
