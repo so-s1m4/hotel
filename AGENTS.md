@@ -1,7 +1,7 @@
 # Working in this repository
 
 Read README.md, docs/DEVELOPMENT.md and common/01_CONTRACT.md before implementation.
-This is a scaffold, not a completed challenge solution. Supplied task prompts under
+This is an integrated offline prototype. Holdout, demo and coverage limits still apply. Supplied task prompts under
 docs/tasks/ are reference assignments; implement the user's requested scope.
 
 - A owns ingestion/ and tests/ingestion/. B owns engine/, run.py and tests/engine/.

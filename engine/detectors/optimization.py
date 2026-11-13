@@ -9,14 +9,14 @@ def known_prices(repo, now, until):
     latest = {}
     for row in repo.get_tariffs(now, until):
         if (not row.get("published_utc") or instant(row["published_utc"]) > instant(now)
-                or not row.get("timestamp_utc") or instant(row["timestamp_utc"]) > instant(until)):
-            continue
-        if number(row.get("price_eur_kwh")) is None:
+                or not row.get("timestamp_utc")
+                or not instant(now).replace(minute=0, second=0, microsecond=0) <= instant(row["timestamp_utc"]) <= instant(until)):
             continue
         t = row["timestamp_utc"]
         if t not in latest or instant(row["published_utc"]) > instant(latest[t]["published_utc"]):
             latest[t] = row
-    return sorted(latest.values(), key=lambda r: instant(r["timestamp_utc"]))
+    return sorted((r for r in latest.values() if number(r.get("price_eur_kwh")) is not None),
+                  key=lambda r: instant(r["timestamp_utc"]))
 
 
 class OptimizationDetector:
@@ -94,21 +94,29 @@ class OptimizationDetector:
             near = utc(instant(now) + timedelta(hours=2))
             known = [r for r in repo.get_weather_forecast(now, near) if r.get("issued_utc")
                          and instant(r["issued_utc"]) <= instant(now) and r.get("target_utc")
-                         and instant(now) <= instant(r["target_utc"]) <= instant(near)
-                         and number(r.get("outdoor_c_forecast")) is not None]
+                         and instant(now) <= instant(r["target_utc"]) <= instant(near)]
             latest = {}
             for row in known:
                 if row["target_utc"] not in latest or instant(row["issued_utc"]) > instant(latest[row["target_utc"]]["issued_utc"]):
                     latest[row["target_utc"]] = row
-            forecasts = [r for r in latest.values() if number(r["outdoor_c_forecast"]) <= self.config.cold_forecast_c]
+            forecasts = [r for r in latest.values() if number(r.get("outdoor_c_forecast")) is not None
+                         and -60 <= number(r["outdoor_c_forecast"]) <= self.config.cold_forecast_c]
             if forecasts:
                 for room in building["building"]["rooms"]:
                     bookings = [b for b in repo.get_bookings_for_room(room["id"], now, near, now)
                                 if b.get("created_utc") and instant(b["created_utc"]) <= instant(now)
-                                and b.get("arrival_utc") and instant(now) < instant(b["arrival_utc"]) <= instant(near)]
+                                and b.get("arrival_utc") and instant(now) < instant(b["arrival_utc"]) <= instant(near)
+                                and b.get("observed_state") not in {"checked_in", "checked_out", "no_show"}
+                                and b.get("observed_room_id", room["id"]) == room["id"]]
                     state = room_state(repo, room["id"], now)
                     setpoint = number(state.get("setpoint_c"))
-                    if bookings and state.get("occupancy") == "vacant" and setpoint is not None and setpoint < 21:
+                    temperature = number(state.get("temperature_c"))
+                    if (bookings and state.get("room_id") == room["id"] and state.get("occupancy") == "vacant"
+                            and state.get("last_observed_utc")
+                            and instant(now)-timedelta(minutes=self.config.telemetry_max_age_minutes) <= instant(state["last_observed_utc"]) <= instant(now)
+                            and temperature is not None and -10 <= temperature < 21
+                            and number(state.get("window_open")) == 0
+                            and setpoint is not None and 5 <= setpoint < 21):
                         result.candidates.append(Candidate("preheat:" + bookings[0]["booking_id"], room["id"], "energy_optimization", "adjust_room_setpoint",
                             "Known near-term booked arrival and issued cold forecast during a cheap published hour; propose vacant-room preheating to 21 °C, conditional on continued vacancy.",
                             [f"bookings.csv:{bookings[0]['booking_id']}", *state.get("evidence", []),

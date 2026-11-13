@@ -294,6 +294,20 @@ class ReplayData:
         out.sort(key=lambda r: (r["start_utc"], r["resource_id"], r["shift_id"]))
         return out
 
+    def _tariff_index(self):
+        """Static sorted target timestamps; availability is still checked per query."""
+        if "tariff_targets" not in self._idx:
+            rows = self.ds.tariffs
+            self._idx["tariff_targets"] = (rows, [r["timestamp_utc"] for r in rows])
+        return self._idx["tariff_targets"]
+
+    def _forecast_index(self):
+        """Targets are indexed once; issue timestamps are built lazily per target."""
+        if "forecast_targets" not in self._idx:
+            by_target = self.ds.forecasts
+            self._idx["forecast_targets"] = (by_target, list(by_target), {})
+        return self._idx["forecast_targets"]
+
     # ------------------------------------------------------- measurements
     def get_measurements(self, filename: str, start_utc: str, end_utc: str,
                          as_of_utc: str, entity_id: str | None = None,
@@ -303,9 +317,10 @@ class ReplayData:
         start, as_of = norm_ts(start_utc), norm_ts(as_of_utc)
         end = min(norm_ts(end_utc), as_of)
         if filename == "tariff.csv":  # price history; future hours stay hidden here
-            return [dict(r) for r in self.ds.tariffs
-                    if start <= r["timestamp_utc"] <= end
-                    and r.get("published_utc") is not None and r["published_utc"] <= as_of]
+            rows, targets = self._tariff_index()
+            lo, hi = bisect_left(targets, start), bisect_right(targets, end)
+            return [dict(r) for r in rows[lo:hi]
+                    if r.get("published_utc") is not None and r["published_utc"] <= as_of]
         series = self.ds.series(filename)
         if entity_id is not None and filename == "room_water.csv" and entity_id.startswith("WM_R"):
             entity_id = entity_id[3:]
@@ -315,24 +330,27 @@ class ReplayData:
         """Per target hour in [hour(as_of), until]: latest forecast issued <= as_of."""
         as_of, until = norm_ts(as_of_utc), norm_ts(until_utc)
         first = as_of[:13] + ":00:00Z"
+        by_target, targets, issue_index = self._forecast_index()
+        lo, hi = bisect_left(targets, first), bisect_right(targets, until)
         out = []
-        for target, rows in self.ds.forecasts.items():
-            if target < first:
-                continue
-            if target > until:
-                break
-            known = [r for r in rows if r["issued_utc"] <= as_of]
+        for target in targets[lo:hi]:
+            rows = by_target[target]
+            issued = issue_index.get(target)
+            if issued is None:
+                issued = issue_index[target] = [r["issued_utc"] for r in rows]
+            known = bisect_right(issued, as_of)
             if known:
-                out.append(dict(known[-1]))
+                out.append(dict(rows[known - 1]))
         return out
 
     def get_tariffs(self, as_of_utc: str, until_utc: str) -> list[dict[str, Any]]:
         """Hourly prices from hour(as_of) to until that were published <= as_of."""
         as_of, until = norm_ts(as_of_utc), norm_ts(until_utc)
         first = as_of[:13] + ":00:00Z"
-        return [dict(r) for r in self.ds.tariffs
-                if first <= r["timestamp_utc"] <= until
-                and r.get("published_utc") is not None and r["published_utc"] <= as_of]
+        rows, targets = self._tariff_index()
+        lo, hi = bisect_left(targets, first), bisect_right(targets, until)
+        return [dict(r) for r in rows[lo:hi]
+                if r.get("published_utc") is not None and r["published_utc"] <= as_of]
 
     # ------------------------------------------- extras (not in the Protocol)
     def get_work_orders(self, as_of_utc: str, asset_id: str | None = None) -> list[dict[str, Any]]:

@@ -33,29 +33,49 @@ class LogisticsDetector:
         fresh = {key: rows[-1] for key, rows in groups.items()
                  if instant(rows[-1]["timestamp_utc"]) >= instant(ago(now, 60))}
         events = repo.get_events(ago(now, 120), now, now)
-        pickups = [e["timestamp_utc"] for e in events if e.get("type") == "waste_pickup"
+        observed_updates = {}
+        for e in events:
+            stamp, asset = e.get("timestamp_utc"), e.get("asset_id")
+            if (not stamp or not asset or not instant(ago(now, 120)) <= instant(stamp) <= instant(now)
+                    or e.get("type") not in {"waste_pickup", "floor_bin_emptied", "vending_restocked"}):
+                continue
+            if asset not in observed_updates or instant(stamp) > instant(observed_updates[asset]):
+                observed_updates[asset] = stamp
+        pickups = [e["timestamp_utc"] for e in events if e.get("type") == "waste_pickup" and e.get("asset_id") == "WASTE_MAIN"
                    and e.get("timestamp_utc") and instant(ago(now, 120)) <= instant(e["timestamp_utc"]) <= instant(now)]
         for held in self.open_transfers.values():
             if any(instant(t) >= instant(held["end_utc"]) for t in pickups):
                 calendar.release_volume(held["decision_id"])
         for asset, held in list(self.open_transfers.items()):
             row = fresh.get((asset, "fill_pct"))
-            if row and number(row.get("value")) is not None and float(row["value"]) < 40 and instant(row["timestamp_utc"]) >= instant(held["end_utc"]):
+            if row and number(row.get("value")) is not None and float(row["value"]) < 40:
                 calendar.cancel(held["decision_id"])
                 self.open_transfers.pop(asset)
                 result.resolved.add("logistics:" + asset)
         planning = deepcopy(calendar)
         main = fresh.get(("WASTE_MAIN", "fill_pct"))
+        if main and observed_updates.get("WASTE_MAIN") and instant(observed_updates["WASTE_MAIN"]) > instant(main["timestamp_utc"]):
+            main = None  # await a post-pickup destination measurement before planning volume
         for (asset, metric), latest in sorted(fresh.items()):
             value = number(latest.get("value"))
             if value is None or asset not in assets:
                 continue
             evidence = [f"logistics.csv:{asset}:{metric}:{latest['timestamp_utc']}"]
+            if asset in observed_updates and instant(observed_updates[asset]) > instant(latest["timestamp_utc"]):
+                # A known pickup/restock/emptying after this reading makes its
+                # level obsolete; do not redispatch or order from a stale level.
+                if asset in self.open_transfers:
+                    held = self.open_transfers.pop(asset)
+                    calendar.cancel(held["decision_id"])
+                    planning.cancel(held["decision_id"])
+                continue
             if metric == "fill_pct":
                 if not 0 <= value <= 100:
                     continue
                 if value < 40:
                     result.resolved.add("logistics:" + asset)
+                    if asset == "WASTE_MAIN":
+                        result.resolved.add("service:WASTE_MAIN:waste_pickup")
                     continue
                 if asset.startswith("WASTE_F") and value >= self.config.waste_trigger_pct:
                     if asset in self.open_transfers:
@@ -100,6 +120,8 @@ class LogisticsDetector:
                     rate = self._rate(rows, increasing=True)
                     hours = (100-value)/rate if rate and rate > 0 else None
                     if value >= self.config.waste_trigger_pct or (hours is not None and hours < 24):
+                        if hours is not None:
+                            evidence.append(f"logistics.csv:{asset}:{metric}:{rows[0]['timestamp_utc']}..{latest['timestamp_utc']} (trend input window)")
                         regular = next_regular(now, {1, 4}, 7)
                         self._service(result, asset, "waste_pickup", value, hours, regular, now, evidence)
             elif metric in {"stock_drinks", "stock_snacks"}:
@@ -109,6 +131,9 @@ class LogisticsDetector:
                 rate = self._rate(groups[(asset, metric)], increasing=False, max_value=capacity)
                 hours = value/rate if rate and rate > 0 else None
                 if value <= capacity*self.config.vending_low_fraction or (hours is not None and hours < 24):
+                    if hours is not None:
+                        history = groups[(asset, metric)]
+                        evidence.append(f"logistics.csv:{asset}:{metric}:{history[0]['timestamp_utc']}..{latest['timestamp_utc']} (trend input window)")
                     regular = next_regular(now, {0, 3}, 10)
                     self._service(result, asset, metric, value, hours, regular, now, evidence)
                 elif value > capacity*0.5:

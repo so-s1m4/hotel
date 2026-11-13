@@ -1,0 +1,39 @@
+{
+  "validator_version": "1.0",
+  "valid": true,
+  "scope": "File-level consistency/scheduling audit only; no ground-truth precision, recall, savings or real-world safety certification.",
+  "dataset": {
+    "profile": "dev",
+    "start_utc": "2026-01-01T00:00:00Z",
+    "end_utc": "2027-01-01T00:00:00Z"
+  },
+  "hashes_sha256": {
+    "decisions": "393a7284f566bd0303b034fdf656ee307a756a73b0c560c9e16ddad04ca5cacd",
+    "audit": "ef4e4145b0a21be7fdd34fc0a059ed97efa1ff89d2185e430b8ccf91f62d3bdc",
+    "building.json": "671785fcc397b9f61811c4ae04cffdd49a5468621bf310f9424238512be397d3",
+    "events.jsonl": "217d6211d872a450c884a9e421f5a84d50539049fe3807921d7addb5eaf1fc9b",
+    "manifest.json": "73fb3c10d9531c3a11d12e13116122a6b598ab05fc3b07cb438ef718ecebfde2",
+    "guest_requests.csv": "85b16e40b7a28812f7a1fc50b7bf92a0693677ac0d42d46aaad8a6e112b500f7",
+    "bookings.csv": "9738181653c6808875f9796f2cc3a1b2bd2b3f38be56b7b5e1dba8c05d3c9a6f",
+    "staff_roster.csv": "436af432d59db36d8ae59d99e765feb61bc08d7d5622158e73e6982bd671d6ec"
+  },
+  "issue_counts": {},
+  "error_count": 0,
+  "warnings": [],
+  "issues": [],
+  "examples_truncated": false,
+  "stats": {
+    "decision_rows": 6341,
+    "valid_unique_decisions": 6341,
+    "audit_rows": 6341,
+    "joined_decisions": 6341,
+    "cancellation_targets": 14,
+    "jobs_cancelled_before_start": 14,
+    "live_intervals": 2964,
+    "live_pending_intervals": 0,
+    "resource_overlap_pairs": 0,
+    "room_overlap_pairs": 0,
+    "observed_equal_time_ties": 0,
+    "duplicate_exact_notifications": 0
+  }
+}

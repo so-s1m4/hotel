@@ -25,7 +25,7 @@ def test_one_command_pipeline_on_test_gateway_covers_all_three_scenarios(tmp_pat
     repo.states["R102"] = [state(room="R102")]
     repo.slots = [slot()]
     repo.stream = [tick("2026-01-06T02:00:00Z"), request(room="R102"), tick()]
-    monkeypatch.setattr(ingestion.replay, "ReplayData", lambda _: repo)
+    monkeypatch.setattr(ingestion.replay, "ReplayData", lambda _, **kwargs: repo)
     out, insights = tmp_path / "decisions.jsonl", tmp_path / "insights.md"
     monkeypatch.setattr(sys, "argv", ["run.py", "--data-dir", str(source), "--out", str(out), "--insights", str(insights)])
     assert main() == 0

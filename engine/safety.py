@@ -28,14 +28,14 @@ def asset_ids(building: dict) -> set[str]:
     return result
 
 
-def validate_safety(decision: DecisionRecordV2, context: dict) -> None:
+def _validate_safety(decision: DecisionRecordV2, context: dict) -> None:
     """Validate proposal, not grant approval. Missing action preconditions fail closed."""
     def require(condition, message):
         if not condition:
             raise SafetyViolation(message)
 
     try:
-        DecisionRecordV2.model_validate(decision.model_dump())
+        DecisionRecordV2.model_validate(decision.model_dump(warnings=False), strict=True)
     except ValueError as exc:
         raise SafetyViolation(f"Invalid decision contract: {exc}") from exc
     building = context.get("building")
@@ -47,19 +47,31 @@ def validate_safety(decision: DecisionRecordV2, context: dict) -> None:
     room = context.get("room", {})
     occupancy = room.get("occupancy", "unknown")
     rooms = {r["id"] for r in building["building"]["rooms"]}
-    room_action = bool(rooms & set(decision.affected_assets))
-    if room_action and decision.action in {"release_room", "schedule_cleaning", "dispatch_robot", "adjust_room_setpoint", "request_inspection"}:
+    affected_rooms = rooms & set(decision.affected_assets)
+    room_action = bool(affected_rooms)
+    room_controls = {"release_room", "schedule_cleaning", "adjust_room_setpoint"}
+    if decision.action in room_controls:
+        require(len(decision.affected_assets) == 1 and len(affected_rooms) == 1,
+                "Room controls require exactly one affected room")
+    if room_action and decision.action in {"dispatch_robot", "request_inspection", "dispatch_technician"}:
+        require(len(decision.affected_assets) == 1 and len(affected_rooms) == 1,
+                "A room intervention requires exactly one affected room")
+    if decision.action in {"schedule_cleaning", "dispatch_robot"}:
+        require(bool(decision.resource_id), "A verified resource assignment is required")
+    if room_action and decision.action in {"release_room", "schedule_cleaning", "dispatch_robot", "adjust_room_setpoint", "request_inspection", "dispatch_technician"}:
         require(room.get("room_id") in decision.affected_assets, "Room preconditions do not match affected asset")
     stamp = room.get("last_observed_utc")
     if stamp:
         require(instant(stamp) <= instant(decision.timestamp_utc), "Future room observation")
     human_needed = decision.action in HUMAN_ACTIONS or context.get("notable_cost", False) or decision.resource_id == "ONCALL_1"
-    entry = context.get("entry_required", room_action and decision.action in {"schedule_cleaning", "request_inspection", "dispatch_robot"})
+    # Entry is a property of a room intervention, not an override controlled by a detector.
+    mandatory_entry = room_action and decision.action in {"schedule_cleaning", "request_inspection", "dispatch_robot", "dispatch_technician"}
+    entry = mandatory_entry or context.get("entry_required") is True
     consent_needed = bool(context.get("water_shutoff") or context.get("safety_critical") or (entry and occupancy != "vacant"))
     require(not human_needed or decision.requires_human_approval, "Human approval is mandatory")
     require(not consent_needed or (decision.requires_human_approval and decision.requires_guest_consent), "Human approval and guest consent are mandatory for entry/safety interventions")
     # Never infer that flags are permissions. Executor checks grants separately.
-    if room_action and decision.action in {"release_room", "schedule_cleaning", "dispatch_robot", "adjust_room_setpoint", "request_inspection"}:
+    if room_action and decision.action in {"release_room", "schedule_cleaning", "dispatch_robot", "adjust_room_setpoint", "request_inspection", "dispatch_technician"}:
         require(stamp is not None and
                 instant(stamp) >= instant(decision.timestamp_utc) - timedelta(minutes=context.get("max_age_minutes", 30)),
                 "Fresh room observations are required")
@@ -84,7 +96,7 @@ def validate_safety(decision: DecisionRecordV2, context: dict) -> None:
         power = number(context.get("battery_power_kw"))
         duration = number(context.get("duration_minutes"))
         soc = number(row.get("battery_soc_kwh"))
-        require(row.get("timestamp_utc") is not None and instant(decision.timestamp_utc)-timedelta(minutes=15) <= instant(row["timestamp_utc"]) <= instant(decision.timestamp_utc), "Fresh observed battery state is required")
+        require(row.get("timestamp_utc") is not None and instant(decision.timestamp_utc) == instant(row["timestamp_utc"]), "Fresh observed battery state is required")
         require(power is not None and duration is not None and 0 < duration <= 15 and soc is not None, "Invalid battery action parameters")
         eta = number(battery.get("round_trip_efficiency"))
         bounds = battery.get("soc_bounds_kwh", [])
@@ -103,14 +115,17 @@ def validate_safety(decision: DecisionRecordV2, context: dict) -> None:
         require(context.get("strategy") in {"pv_charge", "cheap_charge", "peak_discharge"}, "Unknown battery strategy")
         calendar = context.get("calendar")
         end = instant(decision.timestamp_utc) + timedelta(minutes=duration)
-        require(calendar is not None and calendar.available("asset:BAT1", decision.timestamp_utc, end.isoformat().replace("+00:00", "Z"), decision.timestamp_utc), "Battery already has a dispatch for this interval")
+        require(calendar is not None and calendar.available("asset:BAT1", decision.timestamp_utc, end.isoformat().replace("+00:00", "Z"), decision.timestamp_utc, exclude_decision_id=decision.event_id), "Battery already has a dispatch for this interval")
     if decision.action == "dispatch_robot":
         require(context.get("task") in {"floor_cleaning", "carry_bin"}, "Robot capability exceeded")
+        require((context.get("task") == "floor_cleaning" and room_action)
+                or (context.get("task") == "carry_bin" and not room_action),
+                "Robot task must match its room/bin asset")
         if not room_action:
             require(context.get("task") == "carry_bin" and context.get("common_area_route") is True, "Only verified common-area bin routes are supported")
             source, destination = context.get("source_bin", {}), context.get("destination_bin", {})
             catalog = {a["id"]: a for a in building["building"].get("assets", [])}
-            require(source == catalog.get(source.get("id")) and destination == catalog.get(destination.get("id")) and source.get("id") in decision.affected_assets, "Unknown bin capabilities")
+            require(source == catalog.get(source.get("id")) and destination == catalog.get(destination.get("id")) and decision.affected_assets == [source.get("id")] and source.get("id") != destination.get("id"), "Unknown bin capabilities")
             src, dst = context.get("source_observation", {}), context.get("destination_observation", {})
             for obs, asset in ((src, source), (dst, destination)):
                 require(obs.get("asset_id") == asset.get("id") and obs.get("metric") == "fill_pct", "Bin observation mismatch")
@@ -133,12 +148,13 @@ def validate_safety(decision: DecisionRecordV2, context: dict) -> None:
             require(context.get("oncall") and context.get("waiting_guest"), "On-call is only for waiting guests")
             local_start, local_end = instant(start).astimezone(VIENNA), instant(end).astimezone(VIENNA)
             require(local_start.date() == local_end.date() and
-                    (local_start.hour, local_start.minute) >= (15, 30) and
-                    (local_end.hour, local_end.minute) <= (22, 0), "Outside on-call window")
+                    local_start >= local_start.replace(hour=15, minute=30, second=0, microsecond=0) and
+                    local_end <= local_start.replace(hour=22, minute=0, second=0, microsecond=0), "Outside on-call window")
             require(instant(start) >= instant(decision.timestamp_utc) + timedelta(minutes=45), "On-call needs 45-minute travel")
         else:
             slot = context.get("slot", {})
             require(slot.get("resource_id") == decision.resource_id and scheduled(slot, decision.timestamp_utc), "Resource absent or availability unknown")
+            require(slot.get("role") == resources[decision.resource_id], "Roster and resource role disagree")
             require(instant(slot["start_utc"]) <= instant(start) and instant(end) <= instant(slot["end_utc"]), "Reservation outside actual shift")
             if decision.action in {"schedule_cleaning", "request_inspection"}:
                 require(resources[decision.resource_id] == "cleaner", "Only human cleaners may certify housekeeping")
@@ -147,6 +163,16 @@ def validate_safety(decision: DecisionRecordV2, context: dict) -> None:
             if decision.action == "dispatch_robot":
                 require(resources[decision.resource_id] == "robot", "Robot action requires robot resource")
         calendar = context.get("calendar")
-        require(calendar is not None and calendar.available(decision.resource_id, start, end, decision.timestamp_utc), "Resource already reserved or calendar missing")
+        require(calendar is not None and calendar.available(decision.resource_id, start, end, decision.timestamp_utc, exclude_decision_id=decision.event_id), "Resource already reserved or calendar missing")
         if room_action and entry:
-            require(calendar.room_available(room["room_id"], start, end, decision.timestamp_utc), "Room already reserved for another job")
+            require(calendar.room_available(room["room_id"], start, end, decision.timestamp_utc, exclude_decision_id=decision.event_id), "Room already reserved for another job")
+
+
+def validate_safety(decision: DecisionRecordV2, context: dict) -> None:
+    """Turn malformed/incomplete context into a rejected proposal, never a pipeline crash."""
+    try:
+        _validate_safety(decision, context)
+    except SafetyViolation:
+        raise
+    except (KeyError, TypeError, ValueError, OverflowError, AttributeError) as exc:
+        raise SafetyViolation(f"Invalid safety context: {exc}") from exc

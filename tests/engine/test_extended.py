@@ -116,7 +116,7 @@ def test_s04_single_high_sample_or_bad_airflow_does_not_trigger_service():
         else:
             for row in repo.measurements["equipment.csv"]:
                 if row["metric"] == "airflow_m3h": row["value"] = -10
-        assert not DecisionEngine(repo, full_building()).process(tick())
+        assert all(r.issue_type != "ventilation_maintenance" for r in DecisionEngine(repo, full_building()).process(tick()))
 
 
 def test_s05_known_arrival_rush_absence_and_robots_share_resources():
@@ -209,7 +209,7 @@ def test_cheap_known_cold_arrival_preheats_vacant_room_only():
     repo = battery_repo()
     repo.forecasts = [{"issued_utc": "2026-01-06T05:00:00Z", "target_utc": "2026-01-06T10:00:00Z", "outdoor_c_forecast": -5}]
     repo.bookings = [{"booking_id": "B1", "room_id": "R101", "created_utc": "2026-01-05T00:00:00Z", "arrival_utc": "2026-01-06T10:00:00Z", "departure_utc": "2026-01-07T10:00:00Z"}]
-    repo.states["R101"] = [state(setpoint_c=18)]
+    repo.states["R101"] = [state(setpoint_c=18, temperature_c=18, window_open=0)]
     rows = DecisionEngine(repo, full_building()).process(tick())
     assert any(r.action == "adjust_room_setpoint" for r in rows)
     repo.states["R101"] = [state(occupancy="occupied", setpoint_c=18)]
@@ -277,7 +277,7 @@ def test_new_domains_repeat_suppress_with_same_input_and_no_future_sensor_leak()
 
 def test_preheating_is_independent_of_battery_headroom_and_uses_latest_known_forecast():
     repo = battery_repo(soc=95)
-    repo.states["R101"] = [state(setpoint_c=18)]
+    repo.states["R101"] = [state(setpoint_c=18, temperature_c=18, window_open=0)]
     repo.bookings = [{"booking_id": "B1", "room_id": "R101", "created_utc": "2026-01-05T00:00:00Z", "arrival_utc": "2026-01-06T10:00:00Z", "departure_utc": "2026-01-07T10:00:00Z"}]
     repo.forecasts = [{"issued_utc": "2026-01-06T05:00:00Z", "target_utc": "2026-01-06T10:00:00Z", "outdoor_c_forecast": -10}]
     rows = DecisionEngine(repo, full_building()).process(tick())

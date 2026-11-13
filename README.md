@@ -1,114 +1,119 @@
 # Hotel Operations Prototype
 
-Каркас командного решения для PLATO-40: синтетического отеля на 40 номеров.
-Обработка исторических данных → обнаружение риска → решение → согласование →
-симуляция действия → проверка → рекомендации по эксплуатации и проектированию.
+Offline прототип эксплуатации вымышленного PLATO-40: причинный replay → риск →
+планирование → safety/approval → mock audit → наблюдаемая проверка → годовые выводы.
 
-**Статус: engine S01–S05, батарея/PV и логистика реализован и проверен на offline scenario fixtures.**
-Работают детекторы, планирование, safety gate, mock executor и официальный JSONL.
-Годовой Dev уже проанализирован: [insights.md](insights.md),
-[измеренные метрики и SHA-256](docs/analysis_dev.json).
-Полный replay Quickstart/Dev ожидает реализацию `ingestion.ReplayData` Лёшей.
-Также доступны распаковка, аудит данных, проверка входных файлов и тесты контрактов.
-Алгоритмы и ограничения описаны в [docs/ENGINE.md](docs/ENGINE.md).
+Интегрированы `ingestion/` и `engine/`: S01–S05, батарея/PV, преднагрев, роботы,
+мусор и вендинг. Реальные Quickstart и Dev запускаются без API-ключа. Исторические
+наблюдения не меняются, сообщения не считаются доставленными, действия не управляют
+реальным зданием. Holdout ещё не использовался; точность детекции без истинных меток
+не измерена.
 
-## Быстрый старт
+[Разбор независимого review и оставшиеся ограничения](docs/reviews/RESOLUTION.md).
+[Алгоритмы и допущения](docs/ENGINE.md). [Измеренный годовой анализ](insights.md).
 
-Python 3.11+; команды из корня репозитория:
+## Установка и данные
+
+Python 3.11+, команды из корня репозитория:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e '.[dev]'
-# Скопировать ZIP организатора в корень или указать --archive-dir /path/to/downloads
+# ZIP организатора в корне или --archive-dir /path/to/downloads
 python scripts/prepare_data.py
 python run.py --data-dir data/PLATO40_v2_quickstart --check
 python -m pytest -q
 ```
 
-Для воспроизводимого окружения с uv: `uv sync --frozen --extra dev`,
-далее `uv run --frozen --extra dev python -m pytest -q`.
-API-ключ для этих команд не нужен. Опциональные настройки будущего парсера —
-в `.env.example`; автоматическая загрузка `.env` пока не реализована.
+Воспроизводимые зависимости с uv: `uv sync --frozen --extra dev`.
+Архивы и распакованные наборы не хранятся в Git; [как подключить](data/README.md).
+Quickstart (21 день) и Dev (365 дней) — независимые синтетические симуляции.
 
-Аудит всех CSV/JSONL выбранного набора:
-
-```bash
-python -m scripts.audit_data --data-dir data/PLATO40_v2_dev --out outputs/audit_dev.json
-```
-
-## Структура и зоны ответственности
-
-```text
-common/                 исходные общие контракты v1.0, примеры, тесты
-  contracts/api.py      ReplayDataGateway: исторические запросы
-  contracts/schemas.py  NormalizedEventV1 → DecisionRecordV2
-ingestion/             Лёша: загрузка, индексы, causal replay, LLM-парсер
-engine/                Максим: S01–S05, энергия, логистика, годовой анализ, планирование, safety, mock execution
-tests/ingestion/       тесты слоя данных
-tests/engine/          тесты движка на fixtures без готового ingestion
-tests/integration/     общие end-to-end тесты после интеграции
-scripts/               распаковка и потоковый аудит
-docs/source/           оригинальные инструкции и примеры организатора
-docs/tasks/            сохранённые задания для двух разработчиков
-docs/audit_*.json      фактический аудит Quickstart и Dev
-data/                  локальные наборы; не коммитятся
-outputs/               промежуточные результаты; не коммитятся
-run.py                 CLI replay + audit; --check проверяет только входы
-```
-
-Начать работу: [правила интеграции и порядок задач](docs/DEVELOPMENT.md).
-Обзор материалов: [docs/PROJECT_BRIEF.md](docs/PROJECT_BRIEF.md).
-Полный контракт: [common/01_CONTRACT.md](common/01_CONTRACT.md).
-
-## Параллельная работа
-
-- Лёша: [задание A](docs/tasks/A_DATA_LLM.md), `ingestion/`, `tests/ingestion/`.
-- Максим: [задание B](docs/tasks/B_DECISION_ENGINE.md), `engine/`, `run.py`, `tests/engine/`.
-- Источник истины — **одна** корневая `common/`. Не менять контракт независимо.
-- Движок можно писать сейчас на `common/examples/`, не ожидая готового replay.
-- Ветки: `feature/ingestion` и `feature/decision-engine`; для одновременных Git-операций
-  нужны отдельные checkout/worktree. Не переключать ветки в общей рабочей папке.
-- Исходные локальные пакеты `A_LESHA_DATA_LLM/` и `decision_engine_full/` сохранены,
-  исключены из Git. Активную реализацию писать в корневых `ingestion/` и `engine/`.
-
-## Команда replay
-
-После подключения готового ingestion:
+## Запуск и независимая проверка
 
 ```bash
-python run.py --data-dir data/PLATO40_v2_dev --out decisions.jsonl
+python run.py --data-dir data/PLATO40_v2_dev \
+  --out decisions.jsonl --audit decisions_audit.jsonl
+
+python -m engine.validation --data-dir data/PLATO40_v2_dev \
+  --decisions decisions.jsonl --audit decisions_audit.jsonl \
+  --out outputs/dev_validation.json
 ```
 
-**Пока gateway не реализован, без `--check` команда завершится с кодом 2,
-не перезаписывая результат.** Engine не заменяет отсутствующий ingestion тестовой заглушкой.
-Дополнительно: `--audit outputs/audit.jsonl`, `--insights outputs/summary.md`,
-`--config engine_config.json`. Сводка решений не заменяет годовой анализ Level 3.
-Для measured report после replay: `--annual-insights outputs/insights.md`.
-`decisions.jsonl` и `decisions_holdout.jsonl` должны появиться после
-реального запуска; `insights.md` уже получен прямым ретроспективным анализом Dev; образцы организатора не являются решениями нашей команды.
-`pre-holdout` ставить на проверенную версию перед официальным выпуском holdout,
-а не на этот каркас. Детали сдачи — в `docs/source/CHALLENGE.md`, §8–10.
+В корне лежат результаты фактического Dev replay; validation JSON содержит хэши
+точно проверенных решений, audit и входов. Проверка сопоставляет ID/action/time,
+согласования, структурированные отмены, пересечения ресурсов/комнат, уже известную
+занятость и точные дубли уведомлений. Это не сертификат отсутствия всех ошибок.
 
-## Годовой анализ без готового ingestion
+[Проверка Dev](docs/reviews/dev_validation.json),
+[проверка Quickstart](docs/reviews/quickstart_validation.json).
+
+CLI по умолчанию отключает модель. `--llm` явно включает настроенный parser;
+ошибка/отсутствие модели сохраняет source-label fallback. Настройки — `.env.example`;
+секреты не коммитить. `--config PATH.json` переопределяет валидируемые `EngineConfig`
+пороги. `--insights PATH.md` пишет сводку решений;
+`--annual-insights PATH.md` после replay пишет измеренный ретроспективный отчёт
+и соседний JSON. Все выходы должны находиться вне исходного data-dir.
+
+## Покрытие
+
+| Область | Реализовано |
+|---|---|
+| S01 turnaround | Известная занятость и готовность, реальные смены, условные оценки, отмены/перепланирование, позднее согласование on-call |
+| S02 вода | Непрерывные дельты, сбросы/пропуски, vacancy/clean/night, строгий main residual, отдельный осторожный low-rate review и диагностика исключений |
+| S03 комфорт | Длительный холод/перегрев, устойчивое восстановление с margin, HP1 running-only COP, доступные прогнозы/тарифы |
+| S04 обслуживание | AHU filter/airflow против data gaps, известные work orders, смены техника и approval внешнего сервиса |
+| S05 загрузка | Одновременная известная плановая загрузка, фактическая occupancy, отсутствие персонала, общие ресурсы, допустимые robot floor tasks |
+| Энергия | Ограниченная battery charge/discharge по PV/опубликованным ценам, SOC/efficiency/power, vacant preheat при известном заезде и свежих условиях |
+| Логистика | Ёмкость контейнера с плановыми переносами, реальные robot slots, прогноз дефицита, обычные визиты и lead time дополнительных заказов |
+| Learning loop | Измерения Dev, рекомендации CLARA/PLATO, uncertainty и target architecture |
+
+Пороги/длительности — документированные допущения прототипа; батарея использует
+one-step heuristic, не глобальную оптимизацию. Консервативная модель блокирует
+неизвестную/наблюдаемую занятость до подтверждения. Нельзя интерполировать отсутствующие
+счётчики или выдавать main residual за подтверждённую утечку. F5/R208 остаётся
+ограничением там, где нет независимого нормального baseline.
+
+## Годовой анализ отдельно от решений
 
 ```bash
 python -m engine.annual --data-dir data/PLATO40_v2_dev \
   --out insights.md --json docs/analysis_dev.json
 ```
 
-Это отдельный ретроспективный анализ исходных наблюдений. Он не используется
-детекторами как источник будущих сведений. Измеренная стоимость энергии не
-выдаётся за экономию, остаток общего водомера — за подтверждённую утечку.
+[Метрики и SHA-256](docs/analysis_dev.json). Ретроспективные данные никогда не
+подаются обратно в исторические решения. Import cost — наблюдаемая стоимость,
+а не экономия; capped full-bin samples — не объём перелива. Нет precision/recall,
+измеренных улучшений или заявлений о реальных зданиях.
 
-## Ограничения и лицензии
+## Структура и совместная работа
 
-Quickstart (21 день) и Dev (365 дней) — независимые симуляции; не склеивать.
-Только данные, известные на момент решения; пустое значение не равно нулю;
-план бронирования не доказывает присутствие, motion=0 не доказывает выезд.
-Роботы не подтверждают готовность номера. Все действия — симуляция;
-согласование и согласие гостя проверяются отдельно и не подразумеваются.
+```text
+common/             frozen схемы и gateway protocol
+ingestion/         Лёша: загрузка, индексы, causal replay, guest parser
+engine/            Максим: S01–S05, ресурсы, safety, mock executor, validation, annual
+tests/             контракты, сценарии, counterfactual и независимые audit regressions
+docs/source/       оригинальные инструкции организатора
+docs/reviews/      исходный независимый review, resolution и проверенные артефакты
+docs/tasks/        сохранённые исходные задания A/B
+data/              локальные наборы; исключены из Git
+outputs/           промежуточные результаты; исключены из Git
+run.py             одна команда replay, audit и опционального анализа
+```
+
+[Контракт](common/01_CONTRACT.md), [ingestion](ingestion/README.md),
+[порядок интеграции](docs/DEVELOPMENT.md). Общий контракт не меняется независимо.
+Одновременные Git-операции требуют отдельных checkout/worktree; не переключать
+ветку в общей рабочей папке. Старые исходные комплектные папки сохранены локально.
+
+## Сдача и лицензии
+
+После официального выпуска выполнить неизменённый pipeline на отдельном Holdout и
+сохранить `decisions_holdout.jsonl`. Перед выпуском поставить `pre-holdout` на
+проверенную версию. Holdout-файл не расшифровывался, фиктивный результат не создаётся.
+Для заявки ещё нужен реальный 3-минутный ролик и финальная демонстрация;
+[сценарий записи](docs/DEMO.md) не является записанным видео.
 
 Код — MIT. Данные — CC BY 4.0: “PLATO-40 synthetic dataset, Proximata Hackathon '26 –
-Rhomberg track”. Оригинальные документы организатора сохранены с исходной атрибуцией.
-PLATO-40 вымышленный; выводы по нему не описывают реальные здания PLATO или CLARA.
+Rhomberg track”. PLATO/CLARA — названия продуктов Rhomberg; PLATO-40 вымышленный.
