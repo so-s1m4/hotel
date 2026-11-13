@@ -143,12 +143,20 @@ def _guest_events(repo: "ReplayData") -> list[NormalizedEventV1]:
             "source_priority": rec.get("priority"),
             "intents": intents,
         }
+        room = rec.get("room_id")
+        if room is None and rec.get("booking_id"):
+            # Blank room cell: use the room the booking was KNOWN to hold at this
+            # instant (causal view, reassignments up to ts). Marked as derived.
+            booking = repo.get_booking(rec["booking_id"], ts)
+            if booking is not None and booking.get("observed_room_id"):
+                room = booking["observed_room_id"]
+                payload["room_id_source"] = "derived_from_booking_asof"
         out.append(NormalizedEventV1(
             event_id=f"guest:{rec['request_id']}", timestamp_utc=ts, available_at_utc=ts,
             event_type="guest_request",
             source=SourceRefV1(file="guest_requests.csv", record_id=rec["request_id"],
                                timestamp_utc=ts),
-            entities=EventEntitiesV1(room_id=rec.get("room_id"),
+            entities=EventEntitiesV1(room_id=room,
                                      booking_id=rec.get("booking_id"),
                                      guest_request_id=rec["request_id"]),
             priority_hint=rec.get("priority") if rec.get("priority") in PRIORITIES else None,
@@ -157,6 +165,17 @@ def _guest_events(repo: "ReplayData") -> list[NormalizedEventV1]:
 
 
 # ------------------------------------------------------- deterministic streams
+RESERVED_PAYLOAD_KEYS = ("intents", "request_type", "original_text")
+
+
+def _raw_payload(event: dict) -> dict:
+    """events.jsonl fields are kept, but keys that consumers read as guest-request
+    semantics are moved under "source_fields" so a raw record cannot pose as one."""
+    clash = {k: event.pop(k) for k in RESERVED_PAYLOAD_KEYS if k in event}
+    if clash:
+        event["source_fields"] = clash
+    return event
+
 def _raw_events(repo: "ReplayData") -> list[NormalizedEventV1]:
     from .replay import public_event
     rooms = set(repo.ds.room_ids)
@@ -178,7 +197,7 @@ def _raw_events(repo: "ReplayData") -> list[NormalizedEventV1]:
                                timestamp_utc=occurred),
             entities=EventEntitiesV1(room_id=room, booking_id=ev.get("booking_id"),
                                      asset_id=asset, resource_id=ev.get("resource_id")),
-            payload=public_event(ev)))
+            payload=_raw_payload(public_event(ev))))
     return out
 
 

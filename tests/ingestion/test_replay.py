@@ -624,3 +624,34 @@ def test_mixed_fractional_and_exact_rows_survive_any_file_order(tmp_path, order)
     assert [r["temperature_c"] for r in got] == [19.0, 20.0, 22.0]   # true chronological order
     assert repo.get_room_state("R101", "2026-01-05T00:15:01Z")["temperature_c"] == 22.0
     assert repo.get_room_state("R101", "2026-01-05T00:15:00Z")["temperature_c"] is None
+
+
+def test_blank_guest_room_is_derived_from_known_booking_and_raw_keys_cannot_pose(tmp_path):
+    d = tmp_path / "blank"
+    d.mkdir()
+    (d / "manifest.json").write_text(json.dumps({
+        "start_utc": "2026-01-05T00:00:00Z", "end_utc": "2026-01-05T02:00:00Z"}))
+    (d / "building.json").write_text(json.dumps(
+        {"building": {"rooms": [{"id": "R101"}, {"id": "R102"}]}}))
+    (d / "bookings.csv").write_text(
+        "booking_id,room_id,created_utc,arrival_utc,departure_utc,guest_count,channel,status\n"
+        "B1,R101,2026-01-01T00:00:00Z,2026-01-05T14:00:00Z,2026-01-06T10:00:00Z,1,ota,confirmed\n")
+    (d / "events.jsonl").write_text(
+        '{"event_id":"E1","timestamp_utc":"2026-01-05T00:30:00Z","type":"room_reassigned",'
+        '"booking_id":"B1","from_room":"R101","to_room":"R102"}\n'
+        '{"event_id":"E2","timestamp_utc":"2026-01-05T00:40:00Z","type":"bms_alarm",'
+        '"asset_id":"R101","intents":null,"request_type":[]}\n')
+    (d / "guest_requests.csv").write_text(
+        "request_id,timestamp_utc,room_id,booking_id,channel,language,request_type,text,"
+        "priority,response_due_utc,requires_guest_consent\n"
+        "G1,2026-01-05T00:15:00Z,,B1,app,en,wifi_help,wifi?,low,,not_required\n"
+        "G2,2026-01-05T01:00:00Z,,B1,app,en,wifi_help,wifi?,low,,not_required\n"
+        "G3,2026-01-05T01:00:00Z,,,app,en,wifi_help,wifi?,low,,not_required\n")
+    events = {e.event_id: e for e in ReplayData(d, use_llm=False).iter_events()}
+    assert events["guest:G1"].entities.room_id == "R101"      # before the move
+    assert events["guest:G2"].entities.room_id == "R102"      # after the observed move
+    assert events["guest:G2"].payload["room_id_source"] == "derived_from_booking_asof"
+    assert events["guest:G3"].entities.room_id is None        # nothing to derive from
+    alarm = events["raw:E2"].payload
+    assert "intents" not in alarm and "request_type" not in alarm
+    assert alarm["source_fields"] == {"intents": None, "request_type": []}
