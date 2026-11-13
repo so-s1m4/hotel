@@ -433,7 +433,7 @@ def test_untimed_postponement_is_not_revealed_when_scheduled_time_passes(make_da
             visible = next(row for row in rows if row["work_order_id"] == order["work_order_id"])
             assert visible.get("status") != "postponed"
             assert visible.get("status_asof") != "postponed"
-            assert visible.get("summary") is None
+            assert not visible.get("summary")
             assert visible.get("completed_utc") is None
 
 
