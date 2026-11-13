@@ -4,13 +4,14 @@ from datetime import timedelta
 from statistics import median
 
 from engine.core import (Candidate, DetectionResult, EngineConfig, ago, instant,
-                         number, observations, room_state, utc)
+                         number, observations, room_state, stable_id, utc)
 
 
 class EnergyDetector:
     def __init__(self, config: EngineConfig):
         self.config = config
         self.healthy_counts = defaultdict(int)
+        self._notice_priorities = defaultdict(dict)
         self._last_tick = None
 
     def detect(self, event, repo, building: dict) -> DetectionResult:
@@ -54,6 +55,7 @@ class EnergyDetector:
                 self.healthy_counts[key] += 1
                 if self.healthy_counts[key] >= 3:
                     result.resolved.add(key)
+                    self._notice_priorities.pop(room, None)
             else:
                 self.healthy_counts[key] = 0
             if all(low <= v <= high for v in values):
@@ -73,14 +75,14 @@ class EnergyDetector:
                 context = {"room": states[-1]}
                 if reduce:
                     context["setpoint_c"] = high
-                result.candidates.append(Candidate(key, room, "heating_comfort", "adjust_room_setpoint" if reduce else "notify_guest",
+                result.candidates.append(self._scope_comfort_notice(Candidate(key, room, "heating_comfort", "adjust_room_setpoint" if reduce else "notify_guest",
                     f"Occupied temperature above {high} °C for {self.config.cold_window_minutes} min ({min(values):.2f}–{max(values):.2f} °C). " +
                     (f"Reduce excessive heating setpoint to {high} °C within comfort limits; this is not active cooling." if reduce else
                      "Heating-only plant cannot actively cool; propose a ventilation/window check and investigate persistent overheating."),
                     [f"room_telemetry.csv:{room}:{rows[0]['timestamp_utc']}..{now}", *states[-1].get("evidence", [])],
                     "Verify observed temperature and guest comfort; escalate persistent overheating without claiming mechanical cooling.",
                     "Reduce further heat input or propose guest assistance; no simulated cooling is reported as measured.",
-                    priority="high" if max(values) > high+2 else "medium", context=context, variant="overheating"))
+                    priority="high" if max(values) > high+2 else "medium", context=context, variant="overheating")))
                 continue
             if not all(v < low for v in values):
                 continue
@@ -142,10 +144,10 @@ class EnergyDetector:
                 context = {"room": state, "entry_required": True}
                 reason = " Heating demand is already raised or setpoint is unknown; request consent-based inspection rather than assume a control failure."
             common["context"] = context
-            result.candidates.append(Candidate(**common, action=action,
+            result.candidates.append(self._scope_comfort_notice(Candidate(**common, action=action,
                 reason=f"Observed occupied room below {low} °C for {self.config.cold_window_minutes} min ({min(values):.2f}–{max(values):.2f} °C)." + reason + details,
                 outcome="Propose comfort recovery; future telemetry remains observed history.",
-                human=action == "request_inspection", consent=action == "request_inspection"))
+                human=action == "request_inspection", consent=action == "request_inspection")))
         # COP needs simultaneous non-defrost running samples and plausible outdoor context.
         equipment = observations(repo, "equipment.csv", ago(now, 60), now, entity="HP1")
         by_time = defaultdict(dict)
@@ -176,6 +178,22 @@ class EnergyDetector:
         elif continuous and all(v >= self.config.low_cop for _, v in cop):
             result.resolved.add("plant:HP1")
         return result
+
+    def _scope_comfort_notice(self, candidate: Candidate) -> Candidate:
+        """Separate recipient updates without reopening the physical incident."""
+        if candidate.action != "notify_guest":
+            return candidate
+        booking = candidate.context.get("room", {}).get("current_booking_id")
+        scope = "booking:" + booking if booking else "asset:" + candidate.asset
+        notices = self._notice_priorities[candidate.asset]
+        key = (scope, candidate.variant)
+        priorities = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+        highest = max(notices.get(key, candidate.priority), candidate.priority, key=priorities.__getitem__)
+        notices[key] = highest
+        # Keep the thermal prefix for the notification ledger. A downgrade, data
+        # gap or returning booking cannot rearm an already proposed severity.
+        candidate.variant = stable_id(candidate.variant, scope, highest)
+        return candidate
 
     def _continuous(self, rows, now):
         return (len(rows) >= self.config.cold_window_minutes // 15 + 1
