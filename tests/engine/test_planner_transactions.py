@@ -166,3 +166,22 @@ def test_failed_future_input_does_not_advance_successful_input_order():
     engine.process(tick('2026-01-06T09:00:00Z'))
     assert engine.event_count == 1
     assert len(engine._seen_ids) == 1
+
+
+def test_rollback_restores_submitted_calendars_without_copying_calendars():
+    repo, engine = prepared()
+    repo.slots = [slot(start='2026-01-06T11:00:00Z')]
+    engine.process(request(deadline='2026-01-06T13:00:00Z'))
+    submitted = getattr(engine.executor, '_submitted_calendars', None)
+    if submitted is None:
+        pytest.skip('executor without _submitted_calendars')
+    before = {key: list(value) for key, value in submitted.items()}
+    assert all(c is engine.calendar for value in submitted.values() for c in value)
+    repo.states['R101'].append(state(t='2026-01-06T10:00:00Z', cleaning='clean'))
+    repo.fail_method = 'room_water.csv'
+    with pytest.raises(OSError):
+        engine.process(tick('2026-01-06T10:00:00Z'))
+    after = engine.executor._submitted_calendars
+    assert {key: list(value) for key, value in after.items()} == before
+    # identity of the live calendar survives the rollback (no deep copy)
+    assert all(c is engine.calendar for value in after.values() for c in value)

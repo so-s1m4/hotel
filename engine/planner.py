@@ -38,7 +38,14 @@ class _UndoDict(dict):
     def touch(self, key):
         if self.undo is not None and key not in self.undo:
             value = dict.get(self, key, _MISSING)
-            self.undo[key] = deepcopy(value) if self.mutable_values and value is not _MISSING else value
+            if value is _MISSING or not self.mutable_values:
+                self.undo[key] = value
+            elif self.mutable_values == "shallow":
+                # Containers of live objects (e.g. calendars): copy the container,
+                # never the objects, so rollback preserves their identity.
+                self.undo[key] = copy(value)
+            else:
+                self.undo[key] = deepcopy(value)
 
     def __getitem__(self, key):
         if self.mutable_values:
@@ -124,6 +131,8 @@ class _EventTransaction:
         for owner, keys, mutable in (
             (engine, ("_proposals", "_decisions"), False),
             (engine.executor, ("_submitted", "_completed"), False),
+            (engine.executor, tuple(key for key in ("_submitted_calendars",)
+                                    if hasattr(engine.executor, key)), "shallow"),
             (engine.episodes, ("_generations",), False),
             (engine.episodes, ("active",), True),
             (engine.notifications, ("history",), False),
