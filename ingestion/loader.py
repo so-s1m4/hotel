@@ -14,6 +14,7 @@ Design notes
 from __future__ import annotations
 
 import csv
+import io
 import json
 import logging
 from bisect import bisect_left, bisect_right
@@ -59,8 +60,8 @@ def inspect_dataset(data_dir: str | Path) -> dict:
     missing = [name for name in REQUIRED_FILES if not (root / name).is_file()]
     if missing:
         raise ValueError(f"Missing dataset files in {root}: {', '.join(missing)}")
-    manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
-    building = json.loads((root / "building.json").read_text(encoding="utf-8"))
+    manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8-sig"))
+    building = json.loads((root / "building.json").read_text(encoding="utf-8-sig"))
     return {
         "model_id": manifest["model_id"], "profile": manifest["profile"],
         "start_utc": manifest["start_utc"], "end_utc": manifest["end_utc"],
@@ -131,28 +132,52 @@ class Series:
         self.duplicates_dropped = 0
         self.rows_read = 0
         self._memo: dict[str, dict[str, Any]] = {}
-        with path.open("r", encoding="utf-8", newline="") as handle:
-            lines = handle.read().splitlines()
-        self.columns = lines[0].split(",") if lines else []
+        self.bad_rows = 0
+        with path.open("r", encoding="utf-8-sig", newline="") as handle:
+            text = handle.read()
+        # Fast path keeps raw lines; files with quoted cells are parsed by the csv
+        # module (embedded commas/newlines) and kept as cell tuples instead.
+        rows: list[Any]
+        if '"' in text:
+            parsed = [tuple(r) for r in csv.reader(io.StringIO(text, newline=""))]
+            self.columns = [c.strip() for c in parsed[0]] if parsed else []
+            rows = parsed[1:]
+        else:
+            lines = text.splitlines()
+            self.columns = [c.strip() for c in lines[0].split(",")] if lines else []
+            rows = lines[1:]
+        ts_i = self.columns.index("timestamp_utc") if "timestamp_utc" in self.columns else 0
         ent_i = (self.columns.index(self.entity_col)
                  if self.entity_col in self.columns else None)
         met_i = (self.columns.index(self.metric_col)
                  if self.metric_col in self.columns else None)
-        nsplit = max(i for i in (ent_i, met_i, 0) if i is not None) + 1
-        groups: dict[tuple[str, str], tuple[list[str], list[str]]] = {}
+        nsplit = max(i for i in (ent_i, met_i, ts_i) if i is not None) + 1
+        groups: dict[tuple[str, str], tuple[list[str], list[Any]]] = {}
         unsorted_groups: set[tuple[str, str]] = set()
-        for line in lines[1:]:
-            if not line:
+        for line in rows:
+            if not line or (isinstance(line, tuple) and not any(line)):
                 continue
             self.rows_read += 1
-            head = line.split(",", nsplit)
-            key = (head[ent_i] if ent_i is not None else "",
-                   head[met_i] if met_i is not None else "")
+            head = line if isinstance(line, tuple) else line.split(",", nsplit)
+            if len(head) < nsplit:
+                self.bad_rows += 1
+                continue
+            ts = head[ts_i]
+            if not (len(ts) == 20 and ts[19] == "Z" and ts[10] == "T"):
+                try:  # +00:00, fractional seconds, lowercase z, local offsets ...
+                    ts = norm_ts(ts)
+                except (ValueError, TypeError):
+                    self.bad_rows += 1
+                    continue
+                cells = list(line) if isinstance(line, tuple) else line.split(",")
+                cells[ts_i] = ts
+                line = tuple(cells)
+            key = (head[ent_i].strip() if ent_i is not None else "",
+                   head[met_i].strip() if met_i is not None else "")
             group = groups.get(key)
             if group is None:
                 group = groups[key] = ([], [])
             ts_list, line_list = group
-            ts = head[0]
             if ts_list:
                 if ts == ts_list[-1]:
                     if filename != "access_log.csv" or line == line_list[-1]:
@@ -181,7 +206,7 @@ class Series:
             log.info("%s: dropped %d duplicate rows (same timestamp+key)",
                      filename, self.duplicates_dropped)
 
-    def _parse(self, line: str) -> dict[str, Any]:
+    def _parse(self, line: Any) -> dict[str, Any]:
         """Parsed copy of one raw line; a bounded memo serves overlapping windows."""
         cached = self._memo.get(line)
         if cached is None:
@@ -190,15 +215,12 @@ class Series:
             cached = self._memo[line] = self._parse_line(line)
         return dict(cached)
 
-    def _parse_line(self, line: str) -> dict[str, Any]:
-        if '"' in line:
-            cells = next(csv.reader([line]))
-        else:
-            cells = line.split(",")
+    def _parse_line(self, line: Any) -> dict[str, Any]:
+        cells = list(line) if isinstance(line, tuple) else line.split(",")
         cols = self.columns
         if len(cells) < len(cols):
             cells = cells + [""] * (len(cols) - len(cells))
-        return {c: parse_value(c, cells[i]) for i, c in enumerate(cols)}
+        return {c: parse_value(c, cells[i].strip()) for i, c in enumerate(cols)}
 
     def _keys(self, entity_id: str | None, metric: str | None) -> list[tuple[str, str]]:
         return sorted(k for k in self.groups
@@ -236,9 +258,20 @@ def read_csv_dicts(path: Path) -> list[dict[str, str | None]]:
     if not path.exists():
         log.warning("missing file %s", path)
         return []
-    with path.open("r", encoding="utf-8", newline="") as handle:
-        return [{k: none_if_blank(v) for k, v in row.items() if k is not None}
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        rows = [{k.strip(): none_if_blank(v) for k, v in row.items()
+                 if k is not None and isinstance(v, str)}
                 for row in csv.DictReader(handle)]
+    for row in rows:  # canonical UTC strings so string comparison stays chronological
+        for key, value in row.items():
+            if key.endswith("_utc") and value is not None and not (
+                    len(value) == 20 and value[19] == "Z" and value[10] == "T"):
+                try:
+                    row[key] = norm_ts(value)
+                except (ValueError, TypeError):
+                    log.warning("%s: unparseable %s=%r set to None", path.name, key, value)
+                    row[key] = None
+    return rows
 
 
 def _dedup(rows: Iterable[dict], key: str, name: str, audit: dict) -> list[dict]:
@@ -280,7 +313,7 @@ class Dataset:
         if not path.exists():
             log.warning("missing file %s", path)
             return {}
-        return json.loads(path.read_text(encoding="utf-8"))
+        return json.loads(path.read_text(encoding="utf-8-sig"))
 
     # -- static documents
     @property
@@ -314,6 +347,10 @@ class Dataset:
             self._series[filename] = ser
             self.audit[filename + ":rows_read"] = ser.rows_read
             self.audit[filename + ":duplicates_dropped"] = ser.duplicates_dropped
+            if ser.bad_rows:
+                self.audit[filename + ":unparseable_rows"] = ser.bad_rows
+                log.warning("%s: skipped %d rows without a usable timestamp/key",
+                            filename, ser.bad_rows)
         return self._series[filename]
 
     # -- relational tables
@@ -390,7 +427,7 @@ class Dataset:
             if not path.exists():
                 log.warning("missing file %s", path)
                 return out
-            with path.open("r", encoding="utf-8") as handle:
+            with path.open("r", encoding="utf-8-sig") as handle:
                 for line in handle:
                     line = line.strip()
                     if not line:
@@ -401,11 +438,21 @@ class Dataset:
                     except (ValueError, KeyError, TypeError):
                         bad += 1
                         continue
+                    if not isinstance(event, dict):
+                        bad += 1
+                        continue
+                    try:
+                        ts = norm_ts(ts)
+                    except (ValueError, TypeError, AttributeError):
+                        bad += 1
+                        continue
+                    ident = str(ident)
+                    event["event_id"] = ident
                     if ident in seen:
                         dropped += 1
                         continue
                     seen.add(ident)
-                    event["timestamp_utc"] = norm_ts(ts)
+                    event["timestamp_utc"] = ts
                     out.append(event)
             out.sort(key=lambda e: (e["timestamp_utc"], e["event_id"]))
             if dropped or bad:

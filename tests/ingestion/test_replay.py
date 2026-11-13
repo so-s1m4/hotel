@@ -487,3 +487,52 @@ def test_tiny_nulls_dedup_and_occupancy(tiny):
                       "meter_total_l": None}]
     assert tiny.get_room_state("R102", "2026-03-28T23:00:00Z")["last_observed_utc"] is None
     assert tiny.get_booking("BK1", "2026-03-29T00:00:00Z")["status"] == "unresolved"
+
+
+def test_french_est_is_not_a_timezone():
+    from ingestion import guest_parser as gp
+    from common.contracts.schemas import GuestIntentV1
+    text = "Un départ tardif à 13:00 est-il possible ?"
+    record = {"request_id": "GRX", "timestamp_utc": "2026-02-04T07:56:42Z", "language": "fr",
+              "request_type": "late_checkout", "text": text}
+    safe = {"booking": {"departure_utc": "2026-02-05T10:00:00Z"}}
+    item = GuestIntentV1(intent="late_checkout", requested_time_text="13:00",
+                         evidence_quote="Un départ tardif à 13:00")
+    assert gp._resolve_time(item, record, safe) == ("2026-02-05T12:00:00Z", False)
+    est = dict(record, text="Late checkout at 13:00 EST possible?", language="en")
+    item = GuestIntentV1(intent="late_checkout", requested_time_text="13:00",
+                         evidence_quote="Late checkout at 13:00 EST")
+    assert gp._resolve_time(item, est, safe)[0] is None  # a real foreign zone stays unresolved
+
+
+def test_loader_tolerates_bom_crlf_quotes_and_odd_timestamps(tmp_path):
+    d = tmp_path / "odd"
+    d.mkdir()
+    (d / "manifest.json").write_text("﻿" + json.dumps({
+        "start_utc": "2026-01-05T00:00:00Z", "end_utc": "2026-01-05T01:00:00Z"}), encoding="utf-8")
+    (d / "building.json").write_text(json.dumps({"building": {"rooms": [{"id": "R101"}]}}))
+    # BOM, CRLF, reordered + extra column, quoted cell, mixed timestamp spellings, unsorted
+    (d / "room_telemetry.csv").write_bytes((
+        "﻿room_id,timestamp_utc,temperature_c,note,housekeeping_state\r\n"
+        'R101,2026-01-05T00:30:00+00:00,20.5,"a, b",clean\r\n'
+        "R101,2026-01-05T00:15:00.250Z,20.0,,dirty\r\n"
+        "R101,2026-01-05t00:00:00z,19.5,,dirty\r\n"
+        "R101,2026-01-05T01:45:00+01:00,21.0,,clean\r\n"
+        "R101,not-a-time,1,,clean\r\n").encode("utf-8"))
+    (d / "bookings.csv").write_bytes((
+        "﻿booking_id,room_id,created_utc,arrival_utc,departure_utc,guest_count,channel,status\r\n"
+        "BK1,R101,2026-01-01T00:00:00+00:00,2026-01-05T14:00:00.000Z,2026-01-06T10:00:00Z,1,ota,confirmed\r\n"
+    ).encode("utf-8"))
+    repo = ReplayData(d, use_llm=False)
+    rows = repo.get_measurements("room_telemetry.csv", "2026-01-05T00:00:00Z",
+                                 "2026-01-05T02:00:00Z", "2026-01-05T02:00:00Z", "R101")
+    assert [r["timestamp_utc"] for r in rows] == [
+        "2026-01-05T00:00:00Z", "2026-01-05T00:15:00Z", "2026-01-05T00:30:00Z",
+        "2026-01-05T00:45:00Z"]
+    assert rows[2]["note"] == "a, b" and rows[2]["temperature_c"] == 20.5
+    assert repo.audit["room_telemetry.csv:unparseable_rows"] == 1
+    st = repo.get_room_state("R101", "2026-01-05T00:20:00Z")
+    assert st["last_observed_utc"] == "2026-01-05T00:15:00Z" and st["housekeeping_state"] == "dirty"
+    bk = repo.get_booking("BK1", "2026-01-02T00:00:00Z")
+    assert bk["created_utc"] == "2026-01-01T00:00:00Z" and bk["arrival_utc"] == "2026-01-05T14:00:00Z"
+    assert len(list(repo.iter_events())) == 4 + 1
