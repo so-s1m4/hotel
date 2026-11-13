@@ -1,6 +1,7 @@
 """Independent controls for persistent weak-water review, without repair labels."""
 from copy import deepcopy
 from datetime import timedelta
+from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
@@ -221,3 +222,174 @@ def test_default_four_elapsed_hours_fit_both_dst_nights_without_fabricated_sampl
     assert len(candidates) == 1
     assert candidates[0].context["weak_water_metrics"]["intervals"] == 16
     assert candidates[0].context["weak_water_metrics"]["window_minutes"] == 240
+
+
+def exact_counter_points(values, start=START):
+    return [{"room_id": "R101", "timestamp_utc": utc(instant(start)+timedelta(minutes=15*i)),
+             "meter_total_l": value} for i, value in enumerate(values)]
+
+
+def test_decimal_offset_at_exact_lower_rate_is_not_lost_to_binary_subtraction():
+    # Independent construction: avoid repeatedly adding deltas in the fixture,
+    # which can accidentally hide a policy-boundary subtraction error.
+    rows = exact_counter_points([120.2+i for i in range(17)])
+    _, candidates = run(rows)
+    candidate, = candidates
+    metrics = candidate.context["weak_water_metrics"]
+    assert metrics["net_liters"] == rows[-1]["meter_total_l"]-rows[0]["meter_total_l"]
+    assert metrics["net_l_per_interval"] == metrics["net_liters"]/16
+    assert metrics["net_l_per_interval"] == pytest.approx(1.0, abs=1e-12)
+
+
+def test_decimal_offset_at_exact_exclusive_upper_rate_is_not_misclassified_as_weak():
+    rows = exact_counter_points([120.2+3*i for i in range(17)])
+    assert not run(rows)[1]
+
+
+def test_decimal_offset_backstep_at_default_limit_does_not_false_reset_or_clamp():
+    deltas = [1.25]*6+[-0.5]+[1.25]*9
+    exact = Decimal("120.8")
+    values = [float(exact)]
+    for delta in deltas:
+        exact += Decimal(str(delta))
+        values.append(float(exact))
+    rows = exact_counter_points(values)
+    assert rows[7]["meter_total_l"]-rows[6]["meter_total_l"] < -0.5
+    _, candidates = run(rows)
+    candidate, = candidates
+    metrics = candidate.context["weak_water_metrics"]
+    assert metrics["negative_intervals"] == 1
+    assert metrics["negative_liters"] == pytest.approx(0.5, abs=1e-12)
+    assert metrics["net_liters"] == rows[-1]["meter_total_l"]-rows[0]["meter_total_l"]
+    assert metrics["net_liters"] == pytest.approx(sum(deltas), abs=1e-12)
+    assert metrics["net_liters"] < sum(max(0, value) for value in deltas)
+
+
+def test_configured_point_one_backstep_accepts_decimal_boundary_but_retains_signed_value():
+    deltas = [1.25]*6+[-0.1]+[1.25]*9
+    exact = Decimal("92.7")
+    values = [float(exact)]
+    for delta in deltas:
+        exact += Decimal(str(delta))
+        values.append(float(exact))
+    rows = exact_counter_points(values)
+    # Literaldecimal counter values reproduce CSV parsing rather than arithmetic
+    # repeatedly performed by a fixture that could mask the subtraction error.
+    assert rows[6]["meter_total_l"] == 100.2
+    assert rows[7]["meter_total_l"] == 100.1
+    assert rows[7]["meter_total_l"]-rows[6]["meter_total_l"] < -0.1
+    _, candidates = run(rows, d=detector(water_weak_max_backstep_l=0.1))
+    candidate, = candidates
+    metrics = candidate.context["weak_water_metrics"]
+    assert metrics["negative_intervals"] == 1
+    assert metrics["negative_liters"] == rows[6]["meter_total_l"]-rows[7]["meter_total_l"]
+    assert metrics["net_liters"] == rows[-1]["meter_total_l"]-rows[0]["meter_total_l"]
+
+
+@pytest.mark.parametrize("rate,accepted", [(1.0-1e-8,False), (1.0+1e-8,True),
+                                           (3.0-1e-8,True), (3.0+1e-8,False)])
+def test_real_rate_differences_beyond_numeric_tolerance_keep_policy_boundaries(rate, accepted):
+    rows = exact_counter_points([120.2+rate*i for i in range(17)])
+    assert bool(run(rows)[1]) is accepted
+
+
+def test_real_backstep_beyond_numeric_tolerance_still_breaks_the_run():
+    deltas = [1.25]*6+[-0.5-1e-8]+[1.25]*9
+    assert not run(points(deltas, initial=120.8))[1]
+
+
+def test_tiny_valid_floor_is_not_softened_by_default_absolute_tolerance():
+    settings = dict(water_low_min_l_per_interval=1e-12)
+    too_small = exact_counter_points([i*0.5e-12 for i in range(17)])
+    valid = exact_counter_points([i*1.5e-12 for i in range(17)])
+    assert not run(too_small, d=detector(**settings))[1]
+    _, candidates = run(valid, d=detector(**settings))
+    candidate, = candidates
+    assert candidate.context["weak_water_metrics"]["net_l_per_interval"] == pytest.approx(1.5e-12, rel=1e-12, abs=0)
+
+
+def test_absolute_tolerance_does_not_disable_a_valid_narrow_weak_band():
+    settings = dict(water_low_min_l_per_interval=1.0, water_min_l_per_interval=1.0+1e-12)
+    midpoint = 1.0+0.5e-12
+    rows = exact_counter_points([midpoint*i for i in range(17)])
+    _, candidates = run(rows, d=detector(**settings))
+    candidate, = candidates
+    rate = candidate.context["weak_water_metrics"]["net_l_per_interval"]
+    assert settings["water_low_min_l_per_interval"] <= rate < settings["water_min_l_per_interval"]
+
+
+def observe_prefix(d, rows, stop):
+    for i in range(1, stop+1):
+        assert d.observe("R101", rows[max(0,i-4):i+1], rows[i]["timestamp_utc"], eligible=True) is None
+
+
+def test_late_operation_preserves_clean_tail_but_requires_four_hours_since_last_overlap():
+    d = detector()
+    rows = points([1.1]*19)
+    observe_prefix(d, rows, 15)
+    # A newly learned point operation at00:30 local touches both adjacent
+    # intervals, so usable evidence resumes00:45, not at the original midnight.
+    scope = rows[2]["timestamp_utc"]
+    d.invalidate_operation("R101", scope, scope)
+    candidates = []
+    for i in range(16,20):
+        candidate = d.observe("R101", rows[max(0,i-4):i+1], rows[i]["timestamp_utc"], eligible=True)
+        if candidate:
+            candidates.append((i,candidate))
+    assert len(candidates) == 1 and candidates[0][0] == 19
+    candidate = candidates[0][1]
+    assert candidate.context["weak_water_metrics"]["intervals"] == 16
+    assert any(rows[3]["timestamp_utc"] in ref and rows[19]["timestamp_utc"] in ref for ref in candidate.evidence)
+    assert d.diagnostics["operation_invalidations"] == 1
+    assert d.diagnostics["operation_intervals_invalidated"] == 3
+
+
+@pytest.mark.parametrize("scope", [
+    ("2026-01-04T20:00:00Z", "2026-01-04T22:00:00Z"),
+    ("2026-01-05T05:00:00Z", "2026-01-05T06:00:00Z"),
+])
+def test_unrelated_historical_or_future_operation_does_not_erase_current_evidence(scope):
+    d = detector()
+    rows = points([1.1]*16)
+    observe_prefix(d, rows, 15)
+    d.invalidate_operation("R101", *scope)
+    assert d.observe("R101", rows[-2:], rows[-1]["timestamp_utc"], eligible=True) is not None
+    assert d.diagnostics["operation_invalidations"] == 0
+
+
+def test_invalidation_includes_first_interval_start_and_last_interval_end():
+    rows = points([1.1]*17)
+    for scope in [(rows[0]["timestamp_utc"],rows[0]["timestamp_utc"]),
+                  (rows[15]["timestamp_utc"],rows[15]["timestamp_utc"])]:
+        d = detector()
+        observe_prefix(d, rows, 15)
+        d.invalidate_operation("R101", *scope)
+        assert d.observe("R101", rows[15:17], rows[16]["timestamp_utc"], eligible=True) is None
+        if scope[0] == rows[0]["timestamp_utc"]:
+            # Exactly one interval was touched; one more new quarter completes
+            # the surviving clean tail at04:15 local.
+            assert d.observe("R101", rows[16:18], rows[17]["timestamp_utc"], eligible=True) is not None
+        else:
+            assert d.diagnostics["operation_intervals_invalidated"] == 15
+
+
+def test_invalidation_cannot_replay_the_last_tick_to_repopulate_removed_evidence():
+    d = detector()
+    rows = points([1.1]*16)
+    observe_prefix(d, rows, 15)
+    d.invalidate_operation("R101", rows[15]["timestamp_utc"], rows[15]["timestamp_utc"])
+    # The last-observation duplicate guard survives history invalidation.
+    for _ in range(20):
+        assert d.observe("R101", rows[14:16], rows[15]["timestamp_utc"], eligible=True) is None
+    assert d.observe("R101", rows[15:17], rows[16]["timestamp_utc"], eligible=True) is None
+    assert d.diagnostics["eligible_intervals"] == 16
+
+
+def test_operation_in_another_room_and_invalid_scope_cannot_mutate_current_history():
+    d = detector()
+    rows = points([1.1]*16)
+    observe_prefix(d, rows, 15)
+    d.invalidate_operation("R102", rows[0]["timestamp_utc"],rows[15]["timestamp_utc"])
+    with pytest.raises(ValueError, match="end precedes start"):
+        d.invalidate_operation("R101", rows[15]["timestamp_utc"], rows[0]["timestamp_utc"])
+    assert d.observe("R101", rows[-2:], rows[-1]["timestamp_utc"], eligible=True) is not None

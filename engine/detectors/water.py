@@ -4,7 +4,7 @@ from datetime import timedelta
 from statistics import median
 from math import fsum
 
-from engine.detectors.weak_water import PersistentWeakFlowDetector
+from engine.detectors.weak_water import PersistentWeakFlowDetector, water_boundary_tolerance
 
 from engine.core import (Candidate, DetectionResult, EngineConfig, VIENNA, ago,
                          instant, number, observations, room_state, utc)
@@ -37,6 +37,8 @@ class WaterDetector:
         self.diagnostics = Counter()
         self._room_history = defaultdict(lambda: deque(maxlen=672))
         self._low_active = set()
+        self._strong_active = set()
+        self._seen_water_orders = set()
         self.weak = PersistentWeakFlowDetector(config)
 
     def detect(self, event, repo, building: dict, work_orders: list[dict]) -> DetectionResult:
@@ -63,6 +65,7 @@ class WaterDetector:
         local = instant(now).astimezone(VIENNA)
         night = 0 <= local.hour < 6
         room_ids = {r["id"] for r in building["building"]["rooms"]}
+        self._invalidate_new_known_work(room_ids, now, work_orders)
         recent = repo.get_events(ago(now, 120), now, now)
         # Guard even a nonconforming gateway at the boundary.
         recent = [r for r in recent if r.get("timestamp_utc") and
@@ -88,13 +91,16 @@ class WaterDetector:
                 self.diagnostics["main_blocked_room:" + room] += 1
                 continue
             deltas[room] = dict(flow)
-            recovery_limit = min(self.config.water_min_l_per_interval,
-                                 getattr(self.config, "water_low_min_l_per_interval", 1.0)/2) if room in self._low_active else self.config.water_min_l_per_interval
-            if all(v < recovery_limit for _, v in flow):
+            recovery_limit = self.config.water_min_l_per_interval
+            if room in self._low_active or room in self._strong_active:
+                # Reduced but continuing weak flow does not establish recovery.
+                recovery_limit = min(recovery_limit, self.config.water_low_min_l_per_interval / 2)
+            if all(v < recovery_limit - water_boundary_tolerance(recovery_limit) for _, v in flow):
                 self.healthy_counts[key] += 1
                 if self.healthy_counts[key] >= 3:
                     result.resolved.add(key)
                     self._low_active.discard(room)
+                    self._strong_active.discard(room)
             else:
                 self.healthy_counts[key] = 0
             if not night or room in cleaning_rooms:
@@ -102,11 +108,14 @@ class WaterDetector:
             if any(not 0 <= instant(r["timestamp_utc"]).astimezone(VIENNA).hour < 6 for r in readings):
                 continue
             values = [v for _, v in flow]
-            if not all(self.config.water_min_l_per_interval <= v <= self.config.water_max_l_per_interval for v in values):
+            floor = self.config.water_min_l_per_interval
+            ceiling = self.config.water_max_l_per_interval
+            if not all(floor - water_boundary_tolerance(floor) <= v
+                       <= ceiling + water_boundary_tolerance(ceiling) for v in values):
                 continue
             if max(values) > min(values) * 2:
                 continue  # variable guest/operational consumption is not persistent base flow
-            if self._known_work(room, now, work_orders):
+            if any(self._known_work(room, row["timestamp_utc"], work_orders, known_at=now) for row in readings):
                 continue
             if any(room in {r.get("room_id"), r.get("from_room"), r.get("to_room")} and instant(start) <= instant(r["timestamp_utc"]) and
                    r.get("type") in {"checkin", "checkin_early", "checkin_after_wait", "checkout", "checkout_early", "room_reassigned", "stay_in_progress"}
@@ -121,6 +130,11 @@ class WaterDetector:
             evidence = [f"room_water.csv:{room}:{readings[0]['timestamp_utc']}..{now}"]
             for s in states:
                 evidence.extend(s.get("evidence", []))
+            self._strong_active.add(room)
+            # A stronger finding supersedes a weak review qualifying on this
+            # same tick. Continued sub-threshold flow cannot close the incident.
+            result.candidates = [candidate for candidate in result.candidates
+                                 if not (candidate.key == key and candidate.issue == "water_low_rate_review")]
             result.candidates.append(Candidate(key, room, "water_leak", "request_inspection",
                 f"Vacant, observed-clean room has sustained night flow {min(values):.1f}–{max(values):.1f} L/15 min for {self.config.water_window_minutes} min. Possible leak; no recent cleaning or known flushing. Meter model and occupancy remain uncertain.",
                 evidence, "Confirm meter continuity and inspect fixture; verify subsequent flow stops, otherwise seek technician approval.",
@@ -198,7 +212,8 @@ class WaterDetector:
                                 and start_dt < instant(r["timestamp_utc"]) <= now_dt
                                 and r.get("type") in {"checkin", "checkin_early", "checkin_after_wait", "checkout", "checkout_early", "room_reassigned", "stay_in_progress"}
                                 for r in recent)
-            if room not in cleaning_rooms and not transitioning and not self._known_work(room, now, orders):
+            if (room not in cleaning_rooms and not transitioning
+                    and not any(self._known_work(room, r["timestamp_utc"], orders, known_at=now) for r in pair)):
                 states = [room_state(repo, room, r["timestamp_utc"]) for r in pair]
                 eligible = all(s.get("room_id") == room and s.get("occupancy") == "vacant"
                                and s.get("housekeeping_state") == "clean" and s.get("last_observed_utc")
@@ -207,7 +222,9 @@ class WaterDetector:
         eligibility_refs = [ref for s in states for ref in s.get("evidence", [])]
         eligibility_refs.append(f"events.jsonl:{room}:{ago(now, 120)}..{now} (observed operation/lifecycle checks)")
         persistent = self.weak.observe(room, readings, now, eligible=eligible, eligibility_evidence=eligibility_refs)
-        if persistent:
+        if persistent and room in self._strong_active:
+            self.diagnostics["weak_review_suppressed_by_strong_episode"] += 1
+        elif persistent:
             self._low_active.add(room)
             self.healthy_counts["water:"+room] = 0
             result.candidates.append(persistent)
@@ -256,6 +273,9 @@ class WaterDetector:
             return
         if min(values) < max(minimum, base+0.75*minimum, p90+0.5*minimum):
             return
+        if room in self._strong_active:
+            self.diagnostics["weak_review_suppressed_by_strong_episode"] += 1
+            return
         self._low_active.add(room)
         self.healthy_counts["water:"+room] = 0
         self.diagnostics["low_rate_review_windows"] += 1
@@ -270,10 +290,42 @@ class WaterDetector:
             "Flag a long-duration low-rate anomaly for review only; no inspection, shutoff, repair or statistical confidence is asserted.",
             context={"room": states[-1]} if states else {}))
 
-    @staticmethod
-    def _known_work(room: str, now: str, orders: list[dict]) -> bool:
+    def _invalidate_new_known_work(self, rooms: set[str], now: str, orders: list[dict]) -> None:
+        """New knowledge can disqualify retained evidence without rewriting past decisions."""
+        now_dt = instant(now)
         for order in orders:
-            if not order.get("created_utc") or instant(order["created_utc"]) > instant(now):
+            created, scheduled = order.get("created_utc"), order.get("scheduled_utc")
+            if not created or instant(created) > now_dt or not scheduled:
+                continue
+            summary = str(order.get("summary") or "").casefold()
+            if not any(word in summary for word in ("flush", "meter", "legionella", "tap")):
+                continue
+            identity = (order.get("work_order_id"), created, scheduled, order.get("asset_id"), summary)
+            if identity in self._seen_water_orders:
+                continue
+            self._seen_water_orders.add(identity)
+            start = instant(scheduled)
+            end = start + timedelta(hours=2)
+            for room in sorted(rooms):
+                if not (order.get("asset_id") in {room, "WM_" + room} or room.lower() in summary):
+                    continue
+                self.weak.invalidate_operation(room, utc(start), utc(end))
+                history = self._room_history.get(room)
+                if history:
+                    revised = []
+                    for stamp, value, eligible in history:
+                        overlaps = stamp >= start and stamp - timedelta(minutes=15) <= end
+                        if eligible and overlaps:
+                            self.diagnostics["late_known_work_reclassified_intervals"] += 1
+                        revised.append((stamp, value, eligible and not overlaps))
+                    history.clear()
+                    history.extend(revised)
+
+    @staticmethod
+    def _known_work(room: str, now: str, orders: list[dict], *, known_at: str | None = None) -> bool:
+        knowledge_time = instant(known_at or now)
+        for order in orders:
+            if not order.get("created_utc") or instant(order["created_utc"]) > knowledge_time:
                 continue
             scheduled = order.get("scheduled_utc")
             summary = str(order.get("summary") or "").casefold()

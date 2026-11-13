@@ -2,6 +2,7 @@
 from copy import deepcopy
 import json
 from hashlib import sha256
+from itertools import groupby
 
 from common.contracts.api import ReplayDataGateway
 from common.contracts.schemas import NormalizedEventV1, DecisionRecordV2
@@ -61,9 +62,9 @@ class DecisionEngine:
             raise ValueError("Conflicting content for duplicate input event ID")
         if event.event_id in self._seen_ids:
             return []
-        order = (instant(event.available_at_utc), event.event_id)
+        order = instant(event.available_at_utc)
         if self._last_order is not None and order < self._last_order:
-            raise ValueError("Event stream must be sorted by (available_at_utc, event_id)")
+            raise ValueError("Event stream must be sorted by available_at_utc")
         if instant(event.timestamp_utc) > instant(event.available_at_utc):
             raise ValueError("Future event occurrence cannot be used as observed evidence")
         if event.source.timestamp_utc and instant(event.source.timestamp_utc) > instant(event.available_at_utc):
@@ -85,6 +86,11 @@ class DecisionEngine:
             for order in self.work_orders:
                 if order.get("work_order_id") == event.payload.get("work_order_id", event.source.record_id):
                     order["observed_completed_utc"] = now
+                    # Completion narratives become usable only with this
+                    # observed event, never from the original creation view.
+                    for field in ("summary", "scheduled_utc", "asset_id", "assigned_to"):
+                        if event.payload.get(field) is not None:
+                            order[field] = deepcopy(event.payload[field])
         # Evaluate lazily: later planners see earlier accepted resource/capacity reservations.
         detectors = [lambda: self.turnaround.detect(event, self.repo, self.calendar, self.building),
                      lambda: self.water.detect(event, self.repo, self.building, self.work_orders),
@@ -356,6 +362,10 @@ class DecisionEngine:
 
     def run(self) -> list[DecisionRecordV2]:
         records = []
-        for event in self.repo.iter_events():
-            records.extend(self.process(event))
+        # Every fact available at a clock instant precedes its periodic scan.
+        # Only equal-time envelopes are buffered; later facts stay unavailable.
+        for _, events in groupby(self.repo.iter_events(), key=lambda e: instant(e.available_at_utc)):
+            batch = sorted(events, key=lambda e: (e.event_type == "clock_tick", e.event_id))
+            for event in batch:
+                records.extend(self.process(event))
         return records
