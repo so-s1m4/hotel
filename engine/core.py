@@ -84,6 +84,8 @@ class EngineConfig:
     water_window_minutes: int = 60
     water_min_l_per_interval: float = 3.0
     water_low_window_minutes: int = 180
+    water_weak_persistent_window_minutes: int = 240
+    water_weak_max_backstep_l: float = 0.5
     water_low_min_l_per_interval: float = 1.0
     water_low_baseline_min_intervals: int = 12
     water_max_l_per_interval: float = 100.0
@@ -107,7 +109,7 @@ class EngineConfig:
         for name, value in self.__dict__.items():
             if isinstance(value, bool) or not isinstance(value, (int, float)) or number(value) is None:
                 raise ValueError(f"{name} must be a finite number")
-        for name in ("cleaning_minutes", "inspection_minutes", "telemetry_max_age_minutes", "water_window_minutes", "water_low_window_minutes", "water_low_baseline_min_intervals", "cold_window_minutes", "technician_minutes", "robot_minutes"):
+        for name in ("cleaning_minutes", "inspection_minutes", "telemetry_max_age_minutes", "water_window_minutes", "water_low_window_minutes", "water_weak_persistent_window_minutes", "water_low_baseline_min_intervals", "cold_window_minutes", "technician_minutes", "robot_minutes"):
             value = getattr(self, name)
             if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
                 raise ValueError(f"{name} must be a positive integer")
@@ -115,6 +117,10 @@ class EngineConfig:
             raise ValueError("water_window_minutes must be at least 60 and a multiple of 15")
         if self.water_low_window_minutes < 180 or self.water_low_window_minutes % 15 or self.water_low_baseline_min_intervals < 12:
             raise ValueError("Low-rate water review requires at least 3 h and 12 independent baseline intervals")
+        if self.water_weak_persistent_window_minutes not in {240, 300}:
+            raise ValueError("Persistent weak-flow review requires four or five complete hours within the local night")
+        if not 0 <= self.water_weak_max_backstep_l <= 1:
+            raise ValueError("Weak-flow small-backstep allowance must be within 0..1 L")
         if not 0 < self.water_low_min_l_per_interval < self.water_min_l_per_interval:
             raise ValueError("Low-rate floor must be positive and below the sustained-flow threshold")
         if not 0 <= self.comfort_recovery_margin_c < 1.5:

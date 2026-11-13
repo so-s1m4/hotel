@@ -19,7 +19,7 @@ class MockExecutor:
         parameters = {k: deepcopy(context[k]) for k in (
             "start_utc", "end_utc", "setpoint_c", "task", "battery_power_kw",
             "duration_minutes", "expected_soc_kwh", "transfer_liters", "service",
-            "lead_hours", "container_max_fill_pct", "water_shutoff", "safety_critical", "cancelled_decision_id",
+            "lead_hours", "weak_water_metrics", "container_max_fill_pct", "water_shutoff", "safety_critical", "cancelled_decision_id",
             "notable_cost", "common_area_route", "oncall", "waiting_guest",
         ) if k in context}
         parameters["room_id"] = context.get("room", {}).get("room_id")
