@@ -17,7 +17,10 @@ _QUOTES = str.maketrans({'’':"'",'‘':"'",'ʼ':"'",'＇':"'",'‐':'-','‑':
 _JOINERS = {'en':'but|and|however','de':'aber|und|sondern','it':'ma|e|pero',
             'fr':'mais|et','es':'pero|y|sino','nl':'maar|en'}
 _REFUSALS = {
-    'en':r"\b(?:(?:do not|don't|does not|doesn't|would not|wouldn't)\s+(?:want|need|request|require|like)|no longer\s+(?:want|need|request|require))\b",
+    'en':(r"\b(?:(?:do not|don't|does not|doesn't|would not|wouldn't)\s+(?:want|need|request|require|like)|no longer\s+(?:want|need|request|require))\b"
+          r"|\b(?:am|are|is|was|were)\s+not\s+(?:asking|requesting|intending|planning)\b"
+          r"|\b(?:refuse|decline)\b"
+          r"|^\s*(?:please\s+)?(?:do\s+not|don't)\b"),
     'de':r'\b(?:mocht\w*|will|wollen|brauch\w*|benotig\w*)\s+(?:(?:heute|morgen|jetzt|bitte)\s+){0,2}(?:kein\w*|nicht(?:\s+mehr)?)\b',
     'it':r'\bnon\s+(?:voglio|vogliamo|desidero|desideriamo|vorrei|richiedo|richiediamo|ho bisogno|abbiamo bisogno)\b',
     'fr':r"\b(?:ne\s+(?:veux|voulons|voudrais|voudrions|voudrons|souhaite|souhaitons|demande|demandons)\s+(?:pas|plus)|n'\s*(?:ai|avons)\s+(?:pas|plus)\s+besoin)\b",
@@ -36,10 +39,10 @@ _CANCEL = {
 _WAIT = r'^(?:(?:to|a|di|de|te|zu|lange|long|longer|lang|piu|mas|plus)\s+)*(?:wait\w*|warten|attendre|aspettare|esperar|wachten)\b'
 _COURTESY = r'^(?:problem\w*|problema\w*|probleme\w*|worries|probleem\w*)\b'
 _SERVICES = {
-    'early_checkin':r'\b(?:check[ -]?in|incheck\w*|eincheck\w*)\b',
-    'late_checkout':r'\b(?:check[ -]?out|uitcheck\w*|auscheck\w*)\b',
+    'early_checkin':r'\b(?:check[ -]?in|check\s+(?:me|us)\s+in|incheck\w*|eincheck\w*)\b',
+    'late_checkout':r'\b(?:check[ -]?out|check\s+(?:me|us)\s+out|uitcheck\w*|auscheck\w*|depart\s+tardif|salida\s+tardia)\b',
     'arrival_delay':r'\b(?:arrival\s+delay|late\s+arrival|delayed\s+arrival|verspat\w*\s+anreise|arrivo\s+in\s+ritardo|arrivee\s+tardive|llegada\s+tardia|late\s+aankomst)\b',
-    'cleaning_request':r'\b(?:cleaning|housekeeping|reinigung|zimmerreinigung|pulizia|pulizie|menage|nettoyage|limpieza|schoonmaak)\b',
+    'cleaning_request':r'\b(?:clean|cleaning|housekeeping|reinigung|zimmerreinigung|pulizia|pulizie|menage|nettoyage|limpieza|schoonmaak)\b',
     'parking':r'\b(?:parking|parkplatz\w*|parcheggio|aparcamiento|estacionamiento|parkeer\w*)\b',
 }
 # A bare no/kein/geen is accepted only immediately before a service object.
@@ -65,6 +68,9 @@ def declined_intents(text: str, language: str) -> set[str]:
         refusals=list(re.finditer(_REFUSALS[language],clause))
         objects=[]
         for refusal in refusals:
+            if language == 'en' and refusal.group() in {'refuse','decline'} and re.search(
+                    r"\b(?:not|don't|never)\s*$",clause[:refusal.start()]):
+                continue
             tail=clause[refusal.end():].strip()
             # Negating cancellation means retaining the service, not declining.
             if re.match(_WAIT,tail) or re.match(r'^(?:(?:to|a|di|de|te|zu)\s+)*'+_CANCEL[language],tail):

@@ -99,7 +99,7 @@ def test_problem_negation_is_not_a_service_refusal(parser, llm, monkeypatch, tex
     assert 'semantic_negation' not in meta.uncertain_fields
 
 
-@pytest.mark.parametrize('declined', [False, True], ids=['positive-autonomous-control', 'explicit-refusal'])
+@pytest.mark.parametrize('declined', [False, True, 'not-asking'], ids=['positive-autonomous-control', 'explicit-refusal', 'original-narrow-not-asking-witness'])
 def test_real_csv_ingestion_does_not_reserve_a_cleaner_for_declined_service(local_dataset, monkeypatch, declined):
     root, building = local_dataset
     configure(monkeypatch)
@@ -113,6 +113,9 @@ def test_real_csv_ingestion_does_not_reserve_a_cleaner_for_declined_service(loca
         'start_utc': '2026-01-06T08:00:00Z', 'end_utc': '2026-01-06T14:00:00Z',
         'status': 'scheduled', 'status_known_utc': '2026-01-01T00:00:00Z'}])
     source = request(CASES[0][1] if declined else CASES[0][2])
+    if declined == 'not-asking':
+        source['text'] = ('I am not asking to check in today at 13:00; '
+                          'please keep my normal arrival tomorrow at 18:00.')
     write_csv(root/'guest_requests.csv', [{**source, 'channel': 'app_chat', 'priority': 'medium',
                                          'requires_guest_consent': 'not_required'}])
     (root/'events.jsonl').write_text(json.dumps({'event_id': 'VACANCY', 'type': 'checkout',
@@ -145,3 +148,20 @@ def test_real_csv_ingestion_does_not_reserve_a_cleaner_for_declined_service(loca
         assert any(row['decision_id'] == cleaning[0].event_id and row['status'] == 'simulated'
                    for row in engine.executor.audit)
     assert not engine.rejections
+
+
+@pytest.mark.parametrize('language,text,kind,time_text', [
+    ('en', 'Please do not check us in early tomorrow at 13:00.', 'early_checkin', 'tomorrow at 13:00'),
+    ('en', 'We refuse early check-in tomorrow at 13:00.', 'early_checkin', 'tomorrow at 13:00'),
+    ('en', 'Please do not clean our room.', 'cleaning_request', None),
+    ('fr', "Nous ne voulons pas de départ tardif aujourd'hui à 14:00.", 'late_checkout', "aujourd'hui à 14:00"),
+    ('es', 'No queremos una salida tardía hoy a las 14:00.', 'late_checkout', 'hoy a las 14:00'),
+])
+@pytest.mark.parametrize('quote_mode', ['full', 'narrow'])
+def test_independent_refusal_aliases_cannot_be_hidden_by_model_quotes(parser, llm, monkeypatch, language, text, kind, time_text, quote_mode):
+    configure(monkeypatch)
+    llm(response(time_text if quote_mode == 'narrow' and time_text else text, time_text, kind))
+    rows, meta = parser.parse_request_full(request(text, language, kind), context())
+    assert meta.method == 'llm' and meta.needs_review and rows[0]['needs_review']
+    assert rows[0]['requested_time_utc'] is None
+    assert 'semantic_negation' in meta.uncertain_fields

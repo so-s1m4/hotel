@@ -35,7 +35,7 @@ from ingestion.request_polarity import declined_intents
 __all__ = ["parse_request", "parse_request_full", "parse_requests_batch"]
 
 LOGGER = logging.getLogger(__name__)
-PARSER_VERSION = "1.2.1"  # explicit refusals and authenticated endpoint routing guards
+PARSER_VERSION = "1.2.2"  # direct/progressive refusals and multilingual service aliases
 PROMPT_VERSION = "guest-semantics-v2"
 MAX_RESPONSE_BYTES = 2_000_000
 MAX_INTENTS = 32

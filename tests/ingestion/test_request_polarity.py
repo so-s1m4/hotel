@@ -70,3 +70,47 @@ def test_unicode_quotes_accents_and_regional_language_code_are_folded():
 @pytest.mark.parametrize('text,language',[('', 'en'),(None,'en'),('I do not want early check-in.','xx'),('anything',None)])
 def test_unknown_or_unusable_input_makes_no_universal_nlu_claim(text,language):
     assert declined_intents(text,language)==set()
+
+
+@pytest.mark.parametrize('text,positive,expected',[
+ ('I am not asking to check in today at 13:00; please keep my normal arrival tomorrow at 18:00.',
+  'I am asking to check in today at 13:00; please keep my normal arrival tomorrow at 18:00.',{'early_checkin'}),
+ ('Please do not check us in early tomorrow at 13:00.',
+  'Please check us in early tomorrow at 13:00.',{'early_checkin'}),
+ ('We refuse early check-in tomorrow at 13:00.',
+  'We request early check-in tomorrow at 13:00.',{'early_checkin'}),
+ ('Please do not clean our room.', 'Please clean our room.',{'cleaning_request'}),
+ ('We decline late checkout.', 'We request late checkout.',{'late_checkout'}),
+ ("Please don't check me out late.", 'Please check me out late.',{'late_checkout'}),
+])
+def test_external_direct_refusal_vectors_and_their_positive_counterparts(text,positive,expected):
+    assert declined_intents(text,'en')==expected
+    assert declined_intents(positive,'en')==set()
+
+
+@pytest.mark.parametrize('verb',['asking','requesting','intending','planning'])
+def test_negative_progressive_request_predicates_are_service_specific(verb):
+    assert declined_intents(f'I am not {verb} to check in today at 13:00.','en')=={'early_checkin'}
+    assert declined_intents(f'I am {verb} to check in today at 13:00.','en')==set()
+    assert declined_intents(f'I am not {verb} to wait for early check-in.','en')==set()
+
+
+@pytest.mark.parametrize('language,negative,positive',[
+ ('fr','Je ne veux pas de départ tardif demain à 13:00.',
+  'Je voudrais un départ tardif demain à 13:00.'),
+ ('es','No quiero una salida tardía mañana a las 13:00.',
+  'Quiero una salida tardía mañana a las 13:00.'),
+])
+def test_native_late_checkout_aliases_require_explicit_refusal(language,negative,positive):
+    assert declined_intents(negative,language)=={'late_checkout'}
+    assert declined_intents(positive,language)==set()
+
+
+@pytest.mark.parametrize('text',[
+ 'We do not refuse early check-in.', "We don't decline late checkout.",
+ 'Please do not wait for early check-in.', 'We refuse to wait for early check-in.',
+ 'I am not asking for parking; please check us in early.',
+])
+def test_new_markers_do_not_change_waiting_or_independent_parking_scope(text):
+    expected={'parking'} if 'parking' in text else set()
+    assert declined_intents(text,'en')==expected
