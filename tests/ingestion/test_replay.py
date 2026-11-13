@@ -527,12 +527,60 @@ def test_loader_tolerates_bom_crlf_quotes_and_odd_timestamps(tmp_path):
     rows = repo.get_measurements("room_telemetry.csv", "2026-01-05T00:00:00Z",
                                  "2026-01-05T02:00:00Z", "2026-01-05T02:00:00Z", "R101")
     assert [r["timestamp_utc"] for r in rows] == [
-        "2026-01-05T00:00:00Z", "2026-01-05T00:15:00Z", "2026-01-05T00:30:00Z",
-        "2026-01-05T00:45:00Z"]
+        "2026-01-05T00:00:00Z", "2026-01-05T00:15:01Z", "2026-01-05T00:30:00Z",
+        "2026-01-05T00:45:00Z"]  # 00:15:00.250 rounds UP: never visible early
     assert rows[2]["note"] == "a, b" and rows[2]["temperature_c"] == 20.5
     assert repo.audit["room_telemetry.csv:unparseable_rows"] == 1
     st = repo.get_room_state("R101", "2026-01-05T00:20:00Z")
-    assert st["last_observed_utc"] == "2026-01-05T00:15:00Z" and st["housekeeping_state"] == "dirty"
+    assert st["last_observed_utc"] == "2026-01-05T00:15:01Z" and st["housekeeping_state"] == "dirty"
     bk = repo.get_booking("BK1", "2026-01-02T00:00:00Z")
     assert bk["created_utc"] == "2026-01-01T00:00:00Z" and bk["arrival_utc"] == "2026-01-05T14:00:00Z"
     assert len(list(repo.iter_events())) == 4 + 1
+
+
+def test_subsecond_facts_are_never_visible_early(tmp_path):
+    d = tmp_path / "sub"
+    d.mkdir()
+    (d / "manifest.json").write_text(json.dumps({
+        "start_utc": "2026-01-05T00:00:00Z", "end_utc": "2026-01-05T01:00:00Z",
+        "interval_seconds": 900}))
+    (d / "building.json").write_text(json.dumps({"building": {"rooms": [{"id": "R101"}]}}))
+    (d / "room_telemetry.csv").write_text(
+        "timestamp_utc,room_id,temperature_c\n2026-01-05T00:15:00.500Z,R101,20.0\n")
+    (d / "events.jsonl").write_text(
+        '{"event_id":"E1","timestamp_utc":"2026-01-05T00:15:00.500Z","type":"checkin",'
+        '"room_id":"R101","booking_id":"BK1","guests":1}\n')
+    (d / "bookings.csv").write_text(
+        "booking_id,room_id,created_utc,arrival_utc,departure_utc,guest_count,channel,status\n"
+        "BK1,R101,2026-01-05T00:15:00.500Z,2026-01-05T14:00:00Z,2026-01-06T10:00:00Z,1,ota,confirmed\n")
+    (d / "tariff.csv").write_text(
+        "timestamp_utc,price_eur_kwh,published_utc\n"
+        "2026-01-05T01:00:00Z,0.30,2026-01-05T00:30:00Z\n"      # later revision listed first
+        "2026-01-05T01:00:00Z,0.20,2026-01-05T00:00:00Z\n")
+    repo = ReplayData(d, use_llm=False)
+    at, after = "2026-01-05T00:15:00Z", "2026-01-05T00:15:01Z"
+    assert repo.get_room_state("R101", at)["last_observed_utc"] is None
+    assert repo.get_room_state("R101", after)["temperature_c"] == 20.0
+    assert repo.get_events(at, after, at) == [] and len(repo.get_events(at, after, after)) == 1
+    assert repo.get_booking("BK1", at) is None and repo.get_booking("BK1", after) is not None
+    # as-of bounds with a fraction round DOWN
+    assert repo.get_room_state("R101", "2026-01-05T00:15:00.900Z")["last_observed_utc"] is None
+    ev = next(e for e in repo.iter_events() if e.event_id == "raw:E1")
+    assert ev.available_at_utc == after
+    # tariff revisions: the earlier-published price is known first, the revision later
+    early = repo.get_tariffs("2026-01-05T00:10:00Z", "2026-01-05T02:00:00Z")
+    late = repo.get_tariffs("2026-01-05T00:30:00Z", "2026-01-05T02:00:00Z")
+    assert [r["price_eur_kwh"] for r in early] == [0.20]
+    assert [r["price_eur_kwh"] for r in late] == [0.30]
+
+
+@pytest.mark.parametrize("bad", [-900, "0", 0.5, 0, True, None, "900", 10**9])
+def test_invalid_manifest_interval_falls_back(tmp_path, bad):
+    d = tmp_path / "iv"
+    d.mkdir()
+    (d / "manifest.json").write_text(json.dumps({
+        "start_utc": "2026-01-05T00:00:00Z", "end_utc": "2026-01-05T01:00:00Z",
+        "interval_seconds": bad}))
+    (d / "building.json").write_text(json.dumps({"building": {"rooms": []}}))
+    ticks = [e for e in ReplayData(d, use_llm=False).iter_events() if e.event_type == "clock_tick"]
+    assert len(ticks) == 4 and ticks[0].payload["interval_seconds"] == 900

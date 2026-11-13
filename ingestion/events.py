@@ -269,7 +269,7 @@ def _work_order_events(repo: "ReplayData") -> list[NormalizedEventV1]:
 def _tick_events(repo: "ReplayData") -> list[NormalizedEventV1]:
     manifest = repo.ds.manifest
     start, end = manifest.get("start_utc"), manifest.get("end_utc")
-    step = int(manifest.get("interval_seconds") or 900)
+    step = repo.ds.interval_seconds
     if not start or not end:  # fall back to the observed range of a dense series
         try:
             ts_list = next(iter(repo.ds.series("water_main.csv").groups.values()))[0]

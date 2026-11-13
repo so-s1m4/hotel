@@ -303,9 +303,7 @@ class ReplayData:
         start, as_of = norm_ts(start_utc), norm_ts(as_of_utc)
         end = min(norm_ts(end_utc), as_of)
         if filename == "tariff.csv":  # price history; future hours stay hidden here
-            return [dict(r) for r in self.ds.tariffs
-                    if start <= r["timestamp_utc"] <= end
-                    and r.get("published_utc") is not None and r["published_utc"] <= as_of]
+            return self._known_tariffs(start, end, as_of)
         series = self.ds.series(filename)
         if entity_id is not None and filename == "room_water.csv" and entity_id.startswith("WM_R"):
             entity_id = entity_id[3:]
@@ -330,9 +328,16 @@ class ReplayData:
         """Hourly prices from hour(as_of) to until that were published <= as_of."""
         as_of, until = norm_ts(as_of_utc), norm_ts(until_utc)
         first = as_of[:13] + ":00:00Z"
-        return [dict(r) for r in self.ds.tariffs
-                if first <= r["timestamp_utc"] <= until
-                and r.get("published_utc") is not None and r["published_utc"] <= as_of]
+        return self._known_tariffs(first, until, as_of)
+
+    def _known_tariffs(self, first: str, last: str, as_of: str) -> list[dict[str, Any]]:
+        """Per target hour the most recently published price known at as_of."""
+        best: dict[str, dict] = {}
+        for row in self.ds.tariffs:  # sorted by (timestamp, published): later wins
+            if (first <= row["timestamp_utc"] <= last and row.get("published_utc") is not None
+                    and row["published_utc"] <= as_of):
+                best[row["timestamp_utc"]] = row
+        return [dict(best[key]) for key in sorted(best)]
 
     # ------------------------------------------- extras (not in the Protocol)
     def get_work_orders(self, as_of_utc: str, asset_id: str | None = None) -> list[dict[str, Any]]:

@@ -95,6 +95,20 @@ def norm_ts(value: str | datetime) -> str:
     return fmt_ts(parse_ts(value))
 
 
+def data_ts(value: str) -> str:
+    """Canonical timestamp of a SOURCE fact, rounded UP to the next full second.
+
+    The contract's time grid is seconds. A fact stamped 00:15:00.500Z must not be
+    visible to a query as of 00:15:00Z, so sub-second source times round up
+    (as-of/query bounds use ``norm_ts`` and round down). Never early, at most
+    one second late.
+    """
+    parsed = parse_ts(value)
+    if parsed.microsecond:
+        parsed = parsed.replace(microsecond=0) + timedelta(seconds=1)
+    return fmt_ts(parsed)
+
+
 def shift_ts(value: str, **delta: float) -> str:
     return fmt_ts(parse_ts(value) + timedelta(**delta))
 
@@ -165,7 +179,7 @@ class Series:
             ts = head[ts_i]
             if not (len(ts) == 20 and ts[19] == "Z" and ts[10] == "T"):
                 try:  # +00:00, fractional seconds, lowercase z, local offsets ...
-                    ts = norm_ts(ts)
+                    ts = data_ts(ts)
                 except (ValueError, TypeError):
                     self.bad_rows += 1
                     continue
@@ -267,7 +281,7 @@ def read_csv_dicts(path: Path) -> list[dict[str, str | None]]:
             if key.endswith("_utc") and value is not None and not (
                     len(value) == 20 and value[19] == "Z" and value[10] == "T"):
                 try:
-                    row[key] = norm_ts(value)
+                    row[key] = data_ts(value)
                 except (ValueError, TypeError):
                     log.warning("%s: unparseable %s=%r set to None", path.name, key, value)
                     row[key] = None
@@ -388,19 +402,37 @@ class Dataset:
 
     @property
     def tariffs(self) -> list[dict]:
+        """All price rows sorted by (timestamp_utc, published_utc); revisions are kept."""
         def build():
-            rows = read_csv_dicts(self.dir / "tariff.csv")
             out, seen = [], set()
-            for row in rows:
-                if row.get("timestamp_utc") is None or row["timestamp_utc"] in seen:
+            for row in read_csv_dicts(self.dir / "tariff.csv"):
+                if row.get("timestamp_utc") is None:
                     continue
-                seen.add(row["timestamp_utc"])
-                row["price_eur_kwh"] = (float(row["price_eur_kwh"])
-                                        if row.get("price_eur_kwh") is not None else None)
+                ident = (row["timestamp_utc"], row.get("published_utc"), row.get("price_eur_kwh"))
+                if ident in seen:
+                    continue
+                seen.add(ident)
+                try:
+                    row["price_eur_kwh"] = (float(row["price_eur_kwh"])
+                                            if row.get("price_eur_kwh") is not None else None)
+                except ValueError:
+                    row["price_eur_kwh"] = None
                 out.append(row)
-            out.sort(key=lambda r: r["timestamp_utc"])
+            out.sort(key=lambda r: (r["timestamp_utc"], r.get("published_utc") or ""))
             return out
         return self._memo("tariffs", build)
+
+    @property
+    def interval_seconds(self) -> int:
+        """Manifest sampling interval; anything unusable falls back to 900 s."""
+        raw = self.manifest.get("interval_seconds")
+        if isinstance(raw, bool) or not isinstance(raw, (int, float)) or raw != int(raw) \
+                or not 60 <= int(raw) <= 86400:
+            if raw is not None:
+                log.warning("manifest interval_seconds=%r is not usable; using 900", raw)
+                self.audit["manifest:interval_seconds_invalid"] = repr(raw)
+            return 900
+        return int(raw)
 
     @property
     def forecasts(self) -> dict[str, list[dict]]:
@@ -442,7 +474,7 @@ class Dataset:
                         bad += 1
                         continue
                     try:
-                        ts = norm_ts(ts)
+                        ts = data_ts(ts)
                     except (ValueError, TypeError, AttributeError):
                         bad += 1
                         continue

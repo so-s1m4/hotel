@@ -30,7 +30,7 @@ TOP = 15
 
 def _expected_grid(ds: Dataset) -> tuple[list[str], int]:
     manifest = ds.manifest
-    step = int(manifest.get("interval_seconds") or 900)
+    step = ds.interval_seconds
     if not manifest.get("start_utc") or not manifest.get("end_utc"):
         return [], step
     cur, stop = parse_ts(manifest["start_utc"]), parse_ts(manifest["end_utc"])
