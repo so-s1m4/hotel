@@ -1,47 +1,382 @@
-"""Owner A: ReplayDataGateway implementation. Methods are explicit TODOs."""
+"""ReplayData: time-causal implementation of common.contracts.api.ReplayDataGateway.
+
+Every getter takes ``as_of_utc`` and returns only what the hotel systems could
+have known at that instant. Returned dicts are fresh copies.
+"""
+import os
+import re
+from bisect import bisect_left, bisect_right
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Iterator, Any
+from typing import Any, Iterator
+from zoneinfo import ZoneInfo
+
 from common.contracts.schemas import NormalizedEventV1
-from ingestion.loader import inspect_dataset
+
+from .loader import Dataset, fmt_ts, norm_ts, parse_ts, shift_ts
+
+ROSTER_PUBLICATION_LEAD_DAYS = 14  # observed: every 'scheduled' row is known start-14d
+CHECKIN_TYPES = {"checkin", "checkin_early", "checkin_after_wait", "stay_in_progress"}
+CHECKOUT_TYPES = {"checkout", "checkout_early"}
+ROOM_STATE_FIELDS = ("temperature_c", "setpoint_c", "humidity_pct", "co2_ppm",
+                     "presence", "window_open", "housekeeping_state")
+PLANNED_WORK_TYPES = {"preventive", "metering"}
+EFFECTIVE_STATUSES = {"scheduled", "sick", "vacation", "out_of_service"}
+
 
 class ReplayData:
+    """Historical, leak-free view of one dataset directory.
 
-    def __init__(self, data_dir: str | Path):
+    ``use_llm``: None = decide from environment (INGESTION_USE_LLM / API key
+    presence), False = never call a model, True = try the configured model.
+    ``include_ticks``: emit the generated 15-minute ``clock_tick`` events.
+    """
+
+    def __init__(self, data_dir: str | Path, *, use_llm: bool | None = None,
+                 include_ticks: bool = True):
         self.data_dir = Path(data_dir)
-        self.metadata = inspect_dataset(self.data_dir)
+        self.ds = Dataset(self.data_dir)
+        self.tz = ZoneInfo(self.ds.local_tz_name)
+        self.use_llm = use_llm
+        self.include_ticks = include_ticks
+        self._events_cache: list[NormalizedEventV1] | None = None
+        self._idx: dict[str, Any] = {}
 
+    # ------------------------------------------------------------ indexes
+    def _event_index(self) -> dict[str, Any]:
+        if "events" not in self._idx:
+            events = self.ds.raw_events
+            by_room: dict[str, list[dict]] = {}
+            by_booking: dict[str, list[dict]] = {}
+            for ev in events:
+                rooms = {ev.get("room_id"), ev.get("from_room"), ev.get("to_room")}
+                asset = ev.get("asset_id")
+                if isinstance(asset, str):
+                    rooms.add(asset)
+                    if asset.startswith("WM_R"):
+                        rooms.add(asset[3:])
+                for room in rooms:
+                    if isinstance(room, str):
+                        by_room.setdefault(room, []).append(ev)
+                if ev.get("booking_id"):
+                    by_booking.setdefault(ev["booking_id"], []).append(ev)
+            self._idx["events"] = {
+                "all": events, "all_ts": [e["timestamp_utc"] for e in events],
+                "by_room": by_room,
+                "by_room_ts": {r: [e["timestamp_utc"] for e in v] for r, v in by_room.items()},
+                "by_booking": by_booking,
+            }
+        return self._idx["events"]
+
+    def _bookings_by_room(self) -> dict[str, list[dict]]:
+        if "bk_room" not in self._idx:
+            out: dict[str, list[dict]] = {}
+            for row in self.ds.bookings.values():
+                if row.get("room_id"):
+                    out.setdefault(row["room_id"], []).append(row)
+            # bookings moved INTO a room by an observed room_reassigned event
+            for ev in self.ds.raw_events:
+                if ev.get("type") == "room_reassigned" and ev.get("to_room"):
+                    row = self.ds.bookings.get(ev.get("booking_id"))
+                    if row is not None and row not in out.setdefault(ev["to_room"], []):
+                        out[ev["to_room"]].append(row)
+            self._idx["bk_room"] = out
+        return self._idx["bk_room"]
+
+    # ------------------------------------------------------------- events
     def iter_events(self) -> Iterator[NormalizedEventV1]:
-        """Sorted by (available_at_utc, event_id); no future event leakage."""
-        raise NotImplementedError('TODO A: implement time-causal iter_events')
+        """All normalized events sorted by (available_at_utc, event_id)."""
+        if self._events_cache is None:
+            from .events import build_normalized_events
+            self._events_cache = build_normalized_events(self)
+        return iter(self._events_cache)
+
+    def get_events(self, start_utc: str, end_utc: str, as_of_utc: str,
+                   room_id: str | None = None,
+                   event_type: str | None = None) -> list[dict[str, Any]]:
+        """Raw events.jsonl records with start <= timestamp <= min(end, as_of)."""
+        start, end = norm_ts(start_utc), min(norm_ts(end_utc), norm_ts(as_of_utc))
+        idx = self._event_index()
+        if room_id is None:
+            rows, ts = idx["all"], idx["all_ts"]
+        else:
+            rows, ts = idx["by_room"].get(room_id, []), idx["by_room_ts"].get(room_id, [])
+        lo, hi = bisect_left(ts, start), bisect_right(ts, end)
+        return [dict(ev) for ev in rows[lo:hi]
+                if event_type is None or ev.get("type") == event_type]
+
+    # -------------------------------------------------------------- rooms
+    def _occupancy(self, room_id: str, as_of: str) -> tuple[str, str | None, list[str]]:
+        idx = self._event_index()
+        rows = idx["by_room"].get(room_id, [])
+        hi = bisect_right(idx["by_room_ts"].get(room_id, []), as_of)
+        moved_out: dict[str, str] = {}  # booking_id -> evidence of a later move away
+        for ev in reversed(rows[:hi]):
+            kind = ev.get("type")
+            ref = f"events.jsonl:{ev['event_id']}:{kind}:{ev['timestamp_utc']}"
+            booking = ev.get("booking_id")
+            if kind in CHECKIN_TYPES and ev.get("room_id") == room_id:
+                if booking in moved_out:  # guest was moved to another room afterwards
+                    return "vacant", None, [moved_out[booking], ref]
+                return "occupied", booking, [ref]
+            if kind in CHECKOUT_TYPES and ev.get("room_id") == room_id:
+                return "vacant", None, [ref]
+            if kind == "room_reassigned" and ev.get("from_room") == room_id and booking:
+                moved_out.setdefault(booking, ref)  # keep looking further back
+            elif kind == "room_reassigned" and ev.get("to_room") == room_id and booking:
+                if booking in moved_out:
+                    continue
+                # an in-house guest moved INTO this room (check-in observed earlier)
+                state = None
+                for prior in idx["by_booking"].get(booking, []):
+                    if (prior["timestamp_utc"], prior["event_id"]) >= (ev["timestamp_utc"], ev["event_id"]):
+                        break
+                    if prior.get("type") in CHECKIN_TYPES:
+                        state = "in"
+                    elif prior.get("type") in CHECKOUT_TYPES:
+                        state = "out"
+                if state == "in":
+                    return "occupied", booking, [ref]
+        # No observed lifecycle event for this room: absence of events does not
+        # certify vacancy (the start snapshot is not guaranteed to be a full census).
+        return "unknown", None, []
 
     def get_room_state(self, room_id: str, as_of_utc: str) -> dict[str, Any] | None:
-        """Latest known room state; missing != zero; motion != occupancy proof."""
-        raise NotImplementedError('TODO A: implement time-causal get_room_state')
+        """Latest telemetry row <= as_of plus occupancy from guest lifecycle events."""
+        if room_id not in self.ds.room_ids:
+            return None
+        as_of = norm_ts(as_of_utc)
+        row = self.ds.series("room_telemetry.csv").latest(as_of, entity_id=room_id)
+        occupancy, booking_id, evidence = self._occupancy(room_id, as_of)
+        state: dict[str, Any] = {
+            "room_id": room_id, "as_of_utc": as_of,
+            "last_observed_utc": row["timestamp_utc"] if row else None,
+        }
+        for field in ROOM_STATE_FIELDS:
+            state[field] = row.get(field) if row else None
+        state["occupancy"] = occupancy
+        state["current_booking_id"] = booking_id
+        state["evidence"] = (
+            [f"room_telemetry.csv:{room_id}:{row['timestamp_utc']}"] if row else []) + evidence
+        return state
+
+    # ----------------------------------------------------------- bookings
+    def _booking_view(self, row: dict, as_of: str) -> dict[str, Any]:
+        out = dict(row)
+        # Final status ('cancelled') carries no timestamp -> never knowable as-of.
+        out["status"] = "unresolved"
+        out["status_note"] = ("bookings.csv final status withheld (no cancellation "
+                              "timestamp); use observed_state from events.jsonl")
+        observed, room, checkin, checkout = "not_arrived", row.get("room_id"), None, None
+        refs: list[str] = []
+        for ev in self._event_index()["by_booking"].get(row["booking_id"], []):
+            if ev["timestamp_utc"] > as_of:
+                break
+            kind = ev.get("type")
+            refs.append(f"events.jsonl:{ev['event_id']}:{kind}:{ev['timestamp_utc']}")
+            if kind in CHECKIN_TYPES:
+                observed, checkin = "checked_in", ev["timestamp_utc"]
+                room = ev.get("room_id") or room
+            elif kind in CHECKOUT_TYPES:
+                observed, checkout = "checked_out", ev["timestamp_utc"]
+            elif kind == "arrival_waiting_room":
+                observed = "waiting_for_room"
+            elif kind == "no_show":
+                observed = "no_show"
+            elif kind == "room_reassigned":
+                room = ev.get("to_room") or room
+        out.update({"observed_state": observed, "observed_room_id": room,
+                    "observed_checkin_utc": checkin, "observed_checkout_utc": checkout,
+                    "evidence": refs})
+        return out
 
     def get_booking(self, booking_id: str, as_of_utc: str) -> dict[str, Any] | None:
-        """Only if created_utc <= as_of; no use of future final cancellation status."""
-        raise NotImplementedError('TODO A: implement time-causal get_booking')
+        """Booking plan if created_utc <= as_of; final status is never leaked."""
+        as_of = norm_ts(as_of_utc)
+        row = self.ds.bookings.get(booking_id)
+        if row is None or row.get("created_utc") is None or row["created_utc"] > as_of:
+            return None
+        return self._booking_view(row, as_of)
 
-    def get_bookings_for_room(self, room_id: str, start_utc: str, end_utc: str, as_of_utc: str) -> list[dict[str, Any]]:
-        """Known bookings overlapping desired time window, no future leakage."""
-        raise NotImplementedError('TODO A: implement time-causal get_bookings_for_room')
+    def get_bookings_for_room(self, room_id: str, start_utc: str, end_utc: str,
+                              as_of_utc: str) -> list[dict[str, Any]]:
+        """Known bookings whose planned [arrival, departure] overlaps [start, end]."""
+        start, end, as_of = norm_ts(start_utc), norm_ts(end_utc), norm_ts(as_of_utc)
+        out = []
+        for row in self._bookings_by_room().get(room_id, []):
+            if row.get("created_utc") is None or row["created_utc"] > as_of:
+                continue
+            arr, dep = row.get("arrival_utc"), row.get("departure_utc")
+            if arr is None or dep is None or arr > end or dep < start:
+                continue
+            view = self._booking_view(row, as_of)
+            if view["observed_room_id"] != room_id and row.get("room_id") != room_id:
+                continue  # reassignment into this room not yet observed
+            out.append(view)
+        out.sort(key=lambda b: (b["arrival_utc"], b["booking_id"]))
+        return out
 
-    def get_staff_slots(self, start_utc: str, end_utc: str, as_of_utc: str, role: str | None=None) -> list[dict[str, Any]]:
-        """Resource slots with sick/vacation updates only after status_known_utc."""
-        raise NotImplementedError('TODO A: implement time-causal get_staff_slots')
+    # -------------------------------------------------------------- staff
+    def _oncall_rule(self) -> tuple[tuple[int, int], tuple[int, int], int]:
+        notes = ((self.ds.building.get("staff") or {}).get("notes") or {})
+        text = notes.get("on_call_housekeeping") or ""
+        window = re.search(r"(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})", text)
+        lead = re.search(r"(\d+)\s*min", text)
+        if window:
+            h1, m1, h2, m2 = (int(x) for x in window.groups())
+        else:
+            h1, m1, h2, m2 = 15, 30, 22, 0
+        return (h1, m1), (h2, m2), int(lead.group(1)) if lead else 45
 
-    def get_measurements(self, filename: str, start_utc: str, end_utc: str, as_of_utc: str, entity_id: str | None=None, metric: str | None=None) -> list[dict[str, Any]]:
-        """Historical observations bounded by <= as_of; caller must handle gaps/resets."""
-        raise NotImplementedError('TODO A: implement time-causal get_measurements')
+    def _oncall_slots(self, start: str, end: str) -> list[dict[str, Any]]:
+        resources = (self.ds.building.get("staff") or {}).get("resources") or []
+        ids = [r["resource_id"] for r in resources if r.get("role") == "on_call_housekeeping"]
+        if not ids:
+            return []
+        (h1, m1), (h2, m2), lead = self._oncall_rule()
+        first = parse_ts(start).astimezone(self.tz).date() - timedelta(days=1)
+        last = parse_ts(end).astimezone(self.tz).date()
+        out = []
+        day = first
+        while day <= last:
+            s = fmt_ts(datetime(day.year, day.month, day.day, h1, m1, tzinfo=self.tz))
+            e = fmt_ts(datetime(day.year, day.month, day.day, h2, m2, tzinfo=self.tz))
+            if s <= end and e >= start:
+                for rid in ids:
+                    out.append({
+                        "shift_id": f"ONCALL:{rid}:{day.isoformat()}", "resource_id": rid,
+                        "role": "on_call_housekeeping", "start_utc": s, "end_utc": e,
+                        "status": "scheduled", "status_known_utc": None,
+                        "effective_status_asof": "scheduled",
+                        "simulated_assumption": True, "lead_time_min": lead,
+                        "source": "building.json:staff.notes.on_call_housekeeping",
+                        "note": "Derived from building.json rule, not from the roster; "
+                                "actual availability is NOT observed. One room at a "
+                                "time, costly, for waiting guests only.",
+                    })
+            day += timedelta(days=1)
+        return out
+
+    def _shift_view(self, row: dict, as_of: str) -> dict[str, Any] | None:
+        status, known = row.get("status"), row.get("status_known_utc")
+        start = row.get("start_utc")
+        published = known
+        if status != "scheduled" and start is not None:
+            # absence rows overwrite a shift that was published like all the others
+            lead = shift_ts(start, days=-ROSTER_PUBLICATION_LEAD_DAYS)
+            published = min(known, lead) if known is not None else lead
+        if published is not None and published > as_of:
+            return None  # roster line not published yet
+        out = dict(row)
+        if status != "scheduled" and (known is None or known > as_of):
+            out["status"] = "scheduled"          # absence not yet known: do not leak it
+            out["status_known_utc"] = published  # same shape as any planned shift
+            out["effective_status_asof"] = "scheduled"
+        else:
+            out["effective_status_asof"] = status if status in EFFECTIVE_STATUSES else "unknown"
+        return out
+
+    def get_staff_slots(self, start_utc: str, end_utc: str, as_of_utc: str,
+                        role: str | None = None) -> list[dict[str, Any]]:
+        """Shifts overlapping [start, end] as known at as_of (plus derived ONCALL_1)."""
+        start, end, as_of = norm_ts(start_utc), norm_ts(end_utc), norm_ts(as_of_utc)
+        out = []
+        for row in self.ds.roster:
+            if role is not None and row.get("role") != role:
+                continue
+            s, e = row.get("start_utc"), row.get("end_utc")
+            if s is None or e is None or s > end or e < start:
+                continue
+            view = self._shift_view(row, as_of)
+            if view is not None:
+                out.append(view)
+        if role in (None, "on_call_housekeeping"):
+            out.extend(self._oncall_slots(start, end))
+        out.sort(key=lambda r: (r["start_utc"], r["resource_id"], r["shift_id"]))
+        return out
+
+    # ------------------------------------------------------- measurements
+    def get_measurements(self, filename: str, start_utc: str, end_utc: str,
+                         as_of_utc: str, entity_id: str | None = None,
+                         metric: str | None = None) -> list[dict[str, Any]]:
+        """Rows with start <= timestamp_utc <= min(end, as_of); blanks stay None."""
+        filename = os.path.basename(filename)
+        start, as_of = norm_ts(start_utc), norm_ts(as_of_utc)
+        end = min(norm_ts(end_utc), as_of)
+        if filename == "tariff.csv":  # price history; future hours stay hidden here
+            return [dict(r) for r in self.ds.tariffs
+                    if start <= r["timestamp_utc"] <= end
+                    and r.get("published_utc") is not None and r["published_utc"] <= as_of]
+        series = self.ds.series(filename)
+        if entity_id is not None and filename == "room_water.csv" and entity_id.startswith("WM_R"):
+            entity_id = entity_id[3:]
+        return series.query(start, end, entity_id=entity_id, metric=metric)
 
     def get_weather_forecast(self, as_of_utc: str, until_utc: str) -> list[dict[str, Any]]:
-        """Only forecasts with issued_utc <= as_of, select latest as issued."""
-        raise NotImplementedError('TODO A: implement time-causal get_weather_forecast')
+        """Per target hour in [hour(as_of), until]: latest forecast issued <= as_of."""
+        as_of, until = norm_ts(as_of_utc), norm_ts(until_utc)
+        first = as_of[:13] + ":00:00Z"
+        out = []
+        for target, rows in self.ds.forecasts.items():
+            if target < first:
+                continue
+            if target > until:
+                break
+            known = [r for r in rows if r["issued_utc"] <= as_of]
+            if known:
+                out.append(dict(known[-1]))
+        return out
 
     def get_tariffs(self, as_of_utc: str, until_utc: str) -> list[dict[str, Any]]:
-        """Only price values with published_utc <= as_of."""
-        raise NotImplementedError('TODO A: implement time-causal get_tariffs')
+        """Hourly prices from hour(as_of) to until that were published <= as_of."""
+        as_of, until = norm_ts(as_of_utc), norm_ts(until_utc)
+        first = as_of[:13] + ":00:00Z"
+        return [dict(r) for r in self.ds.tariffs
+                if first <= r["timestamp_utc"] <= until
+                and r.get("published_utc") is not None and r["published_utc"] <= as_of]
 
-    def get_events(self, start_utc: str, end_utc: str, as_of_utc: str, room_id: str | None=None, event_type: str | None=None) -> list[dict[str, Any]]:
-        """Observed historical events; no future checkin/checkout/cleaning outcomes."""
-        raise NotImplementedError('TODO A: implement time-causal get_events')
+    # ------------------------------------------- extras (not in the Protocol)
+    def get_work_orders(self, as_of_utc: str, asset_id: str | None = None) -> list[dict[str, Any]]:
+        """Work orders created <= as_of. Outcome fields appear only once they happened."""
+        as_of = norm_ts(as_of_utc)
+        out = []
+        for row in self.ds.work_orders:
+            if row.get("created_utc") is None or row["created_utc"] > as_of:
+                continue
+            if asset_id is not None and row.get("asset_id") != asset_id:
+                continue
+            out.append(work_order_view(row, as_of))
+        return out
+
+    @property
+    def audit(self) -> dict[str, Any]:
+        """Row counts and de-duplication counters for files loaded so far."""
+        return dict(self.ds.audit)
+
+
+def work_order_view(row: dict, as_of: str) -> dict[str, Any]:
+    """Causal view of a work order: final status/summary only after completion."""
+    out = dict(row)
+    done = work_order_resolved_at(row)
+    if done is not None and done <= as_of:
+        out["status_asof"] = row.get("status") or "unknown"
+        return out
+    out["completed_utc"] = None
+    out["status"] = "open"
+    out["status_asof"] = "open"
+    # Corrective summaries are written after the fact (diagnosis/outcome) and are
+    # withheld until completion. Preventive/metering orders are planned work whose
+    # scope is defined when they are scheduled (e.g. which taps get flushed, which
+    # meter is exchanged), so that text is known from creation. Always a string.
+    planned = row.get("type") in PLANNED_WORK_TYPES and row.get("status") == "completed"
+    out["summary"] = (row.get("summary") or "") if planned else ""
+    return out
+
+
+def work_order_resolved_at(row: dict) -> str | None:
+    """When the final status became observable: only a real completed_utc counts.
+
+    'postponed' rows have no timestamp for the status change, so their final
+    status and summary are never revealed (they stay "open").
+    """
+    return row.get("completed_utc")

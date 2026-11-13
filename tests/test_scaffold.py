@@ -50,13 +50,15 @@ def test_preflight_does_not_create_decisions(dataset):
     assert not output.exists()
 
 
-def test_unimplemented_pipeline_fails_without_touching_output(dataset, tmp_path_factory):
+def test_failed_replay_does_not_touch_output(dataset, tmp_path_factory):
+    # The gateway is implemented now; an unusable fixture dataset (empty files,
+    # building.json without constraints) must still fail before writing anything.
     output = tmp_path_factory.mktemp("pipeline_output") / "decisions.jsonl"
     output.write_text("existing result\n")
     result = subprocess.run([sys.executable, str(ROOT / "run.py"), "--data-dir", str(dataset),
                              "--out", str(output)], capture_output=True, text=True)
     assert result.returncode == 2
-    assert "not implemented" in result.stderr
+    assert "decisions were not written" in result.stderr
     assert output.read_text() == "existing result\n"
 
 
