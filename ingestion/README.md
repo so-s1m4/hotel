@@ -81,3 +81,29 @@ separate from `payload.intents` (extraction). Without a model, or on any model e
 the intent is the dataset label with `needs_review=true`, no time is invented, and
 `extraction.method` is `source_label`/`fallback`. If the model's intents do not contain
 the dataset label, both are kept and `extraction.needs_review=true`.
+
+## Data-quality report (for insights, not for decisions)
+
+```bash
+python -m ingestion.quality --data-dir data/PLATO40_v2_dev --out outputs/quality_dev.json
+```
+
+A deterministic, retrospective whole-dataset report: duplicates, blank cells per column,
+communication-loss runs and floor-wide outages, frozen temperature sensors, implausible
+sentinel values, water-meter counter decreases matched against metering work orders. It
+is **not time-causal** and must never be used at replay time. Measured on the supplied
+data (synthetic, no real-world claims):
+
+| | Quickstart | Dev |
+|---|---:|---:|
+| duplicate telemetry rows dropped | 2 | 40 |
+| floor-wide sensor outages (all 10 rooms of a floor at once) | 2 (floor 3) | 14 (floor 3 dominant: 2,110 lost samples vs 360 on floor 1) |
+| frozen temperature runs (>= 3 h identical) | 1 | 6 |
+| implausible sentinel readings (e.g. 85.0 / -40.0 degC, CO2 0 / 10000 ppm) | 1 | 13 |
+| room water-meter counter decreases | 338 | 8,116 |
+| ... explained by a metering work order (true meter exchange) | 12 | 25 |
+| ... small (< 4 L) unexplained decreases = reading jitter | 326 | 8,091 |
+
+Two things follow for consumers: a negative water delta is almost always jitter, not a
+meter exchange (only the multi-thousand-litre drops are exchanges), and a whole floor
+going blank at once points at the gateway, not at forty individual sensors.
