@@ -132,7 +132,7 @@ def test_paired_run_counts_raw_windows_separately_from_suppressed_episode_emissi
     assert "not true/false positives" in report["paired_comparison"]["interpretation"]
 
 
-def test_evaluation_feeds_only_creation_work_order_view_not_later_repair_narratives():
+def test_evaluation_never_feeds_future_completion_context_but_uses_it_once_available():
     instances = []
     class OrderObserver(NoRule):
         def __init__(self,config):
@@ -143,14 +143,17 @@ def test_evaluation_feeds_only_creation_work_order_view_not_later_repair_narrati
             self.orders_seen.append([dict(o) for o in orders])
             return DetectionResult()
     repo = exposure_repo()
-    created = SimpleNamespace(event_type="work_order_created",payload={"work_order_id":"WO1","created_utc":"2026-01-06T01:00:00Z",
+    created = SimpleNamespace(event_id="wo:WO1",available_at_utc="2026-01-06T01:00:00Z",event_type="work_order_created",payload={"work_order_id":"WO1","created_utc":"2026-01-06T01:00:00Z",
         "asset_id":"R101","scheduled_utc":"2026-01-06T01:30:00Z","summary":"planned tap flushing","completed_utc":"2026-01-06T02:00:00Z"})
-    completed = SimpleNamespace(event_type="operational_event",payload={"type":"work_order_completed","work_order_id":"WO1","summary":"future repair outcome narrative"})
-    repo.stream = [created,tick("2026-01-06T01:45:00Z"),completed,tick(NOW)]
+    completed = SimpleNamespace(event_id="wo:WO1:resolved",available_at_utc=NOW,event_type="operational_event",payload={"type":"work_order_completed","work_order_id":"WO1","summary":"completion context disclosed now"})
+    repo.stream = [created,tick("2026-01-06T01:45:00Z"),tick(NOW),completed]
     evaluate_replay(repo,BUILDING,{"baseline":OrderObserver,"candidate":OrderObserver})
     for detector in instances:
         assert len(detector.orders_seen) == 2
-        assert all(snapshot[0]["summary"] == "planned tap flushing" for snapshot in detector.orders_seen)
+        assert detector.orders_seen[0][0]["summary"] == "planned tap flushing"
+        assert detector.orders_seen[1][0]["summary"] == "completion context disclosed now"
+        assert "observed_completed_utc" not in detector.orders_seen[0][0]
+        assert detector.orders_seen[1][0]["observed_completed_utc"] == NOW
         assert all("completed_utc" not in snapshot[0] for snapshot in detector.orders_seen)
 
 
@@ -191,3 +194,100 @@ def test_independent_raw_csv_crosscheck_uses_exact_latest_pairs_not_hole_imputat
     assert result["counts"]["strict_1h_complete_ticks"] == 0
     assert result["counts"]["latest_pair_available_but_1h_blocked_ticks"] == 2
     assert all(len(digest)==64 for digest in result["source_sha256"].values())
+
+
+def test_reporting_threshold_tolerance_is_tight_and_preserves_negative_sign():
+    histogram = Histogram()
+    for value in [1-5e-10,1-1e-7,3-5e-10,3-1e-7,-1e-12]:
+        histogram.add(value)
+    report = histogram.report()
+    assert report["range_counts"]["1_to_lt3"] == 2
+    assert report["range_counts"]["0.5_to_lt1"] == 1
+    assert report["range_counts"]["3_to_100"] == 1
+    assert report["range_counts"]["negative"] == 1
+    assert report["min_l"] == -1e-12
+
+
+def test_operation_at_either_endpoint_excludes_the_interval_not_just_current_tick():
+    repo = exposure_repo()
+    # Work started >2h ago at the latest endpoint but exactly2h before the first.
+    orders = [{"work_order_id":"WO1","created_utc":"2026-01-05T00:00:00Z","asset_id":"R101",
+               "scheduled_utc":"2026-01-05T23:45:00Z","summary":"planned taps flush"}]
+    profile = ExposureProfile(BUILDING,EngineConfig())
+    profile.observe(NOW,repo,orders)
+    report = profile.report()
+    assert report["primary_eligibility_exclusions"]["known_planned_water_work"] == 1
+    assert report["counts"]["eligible_nonnegative_night_intervals"] == 1
+
+
+def test_positive_weak_run_uses_inclusive_lower_and_exclusive_upper_tolerance():
+    for delta,expected in [(1-5e-10,1),(1-1e-7,0),(3-5e-10,0),(3-1e-7,1)]:
+        repo = exposure_repo()
+        for row in repo.measurements["room_water.csv"]:
+            if row["room_id"] == "R101" and row["timestamp_utc"] == NOW:
+                row["meter_total_l"] = 103+delta
+        profile = ExposureProfile(BUILDING,EngineConfig())
+        profile.observe(NOW,repo,[])
+        assert profile.report()["per_room"]["R101"]["longest_positive_1_to_lt3l_run_intervals"] == expected
+
+
+def test_pair_quality_reporting_does_not_loosen_tiny_configured_backstep_bound():
+    repo = exposure_repo()
+    for row in repo.measurements["room_water.csv"]:
+        if row["room_id"] == "R101" and row["timestamp_utc"] == NOW:
+            row["meter_total_l"] = 103-5e-10
+    profile = ExposureProfile(BUILDING,EngineConfig(water_weak_max_backstep_l=1e-12))
+    profile.observe(NOW,repo,[])
+    assert profile.report()["counts"]["causally_eligible_signed_night_intervals"] == 2
+    assert profile.report()["counts"]["weak_pair_quality_eligible_night_intervals"] == 1
+
+
+def test_equal_time_creation_is_visible_even_when_tick_arrives_first():
+    seen=[]
+    class Observer(NoRule):
+        def detect(self,event,repo,building,orders):
+            seen.append([dict(order) for order in orders])
+            return DetectionResult()
+    repo=exposure_repo()
+    created=SimpleNamespace(event_id="wo:WO1",available_at_utc=NOW,event_type="work_order_created",
+        payload={"work_order_id":"WO1","created_utc":NOW,"asset_id":"R101","summary":"planned tap flushing"})
+    repo.stream=[tick(NOW),created]
+    evaluate_replay(repo,BUILDING,{"candidate":Observer})
+    assert seen == [[{"work_order_id":"WO1","created_utc":NOW,"asset_id":"R101","summary":"planned tap flushing",
+                      "scheduled_utc":None,"assigned_to":None,"type":None}]]
+
+
+def test_evaluation_rejects_future_occurrence_and_reversed_availability():
+    repo=exposure_repo()
+    future=SimpleNamespace(event_id="wo:WO1",available_at_utc=NOW,timestamp_utc="2026-01-06T02:15:00Z",
+                           event_type="work_order_created",payload={})
+    repo.stream=[future]
+    with pytest.raises(ValueError,match="Future occurrence"):
+        evaluate_replay(repo,BUILDING,{"candidate":NoRule})
+    repo.stream=[tick(NOW),tick("2026-01-06T01:45:00Z")]
+    with pytest.raises(ValueError,match="ordered by availability"):
+        evaluate_replay(repo,BUILDING,{"candidate":NoRule})
+
+
+def test_evaluation_rejects_future_source_timestamp():
+    repo=exposure_repo()
+    event=tick(NOW)
+    event.source.timestamp_utc="2026-01-06T02:15:00Z"
+    repo.stream=[event]
+    with pytest.raises(ValueError,match="Future source timestamp"):
+        evaluate_replay(repo,BUILDING,{"candidate":NoRule})
+
+
+def test_evaluation_snapshots_reused_gateway_event_before_group_lookahead():
+    class MutableReplay(FakeGateway):
+        def iter_events(self):
+            event=tick("2026-01-06T01:45:00Z")
+            yield event
+            event.available_at_utc=NOW
+            event.timestamp_utc=NOW
+            event.event_id="tick:"+NOW
+            yield event
+    repo=MutableReplay()
+    report=evaluate_replay(repo,BUILDING,{"candidate":NoRule})
+    assert report["ticks_evaluated"] == 2
+    assert report["last_tick_utc"] == NOW

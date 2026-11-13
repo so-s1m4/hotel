@@ -268,3 +268,94 @@ def test_standalone_process_cannot_anticipate_an_unseen_same_time_fact():
     findings = water_records(decisions)
     assert len(findings) == 1
     assert findings[0].timestamp_utc == "2026-02-11T03:00:00Z"
+
+
+def test_run_rejects_unsorted_distinct_availability_times_before_processing_old_tick():
+    import pytest
+    repo = FakeGateway()
+    repo.stream = [tick("2026-02-11T03:00:00Z"), tick("2026-02-11T02:45:00Z")]
+    engine = DecisionEngine(repo, BUILDING)
+    with pytest.raises(ValueError, match="sorted by available_at_utc"):
+        engine.run()
+    assert engine.event_count == 1
+    assert engine.water.diagnostics["ticks_processed"] == 1
+
+
+def test_same_time_fact_batch_still_rejects_future_occurrence_and_source_timestamp():
+    import pytest
+    from common.contracts.schemas import NormalizedEventV1
+    for future_field in ("occurrence", "source"):
+        now = "2026-02-11T03:00:00Z"
+        later = "2026-02-11T03:15:00Z"
+        fact = NormalizedEventV1(
+            event_id="wo:INVALID_FUTURE", event_type="work_order_created",
+            timestamp_utc=later if future_field == "occurrence" else now,
+            available_at_utc=now,
+            source={"file": "work_orders.csv", "record_id": "INVALID_FUTURE",
+                    "timestamp_utc": later if future_field == "source" else now},
+            entities={"room_id": "R101", "asset_id": "R101"},
+            payload={"work_order_id": "INVALID_FUTURE", "created_utc": now,
+                     "scheduled_utc": "2026-02-11T00:00:00Z", "asset_id": "R101",
+                     "summary": "Tap flushing"})
+        repo = FakeGateway()
+        repo.stream = [tick(now), fact]
+        engine = DecisionEngine(repo, BUILDING)
+        with pytest.raises(ValueError, match="Future"):
+            engine.run()
+        # The equal-time fact is checked before its periodic scan, but its
+        # invalid future occurrence/source cannot be used as current context.
+        assert engine.event_count == 0
+        assert engine.work_orders == []
+        assert engine.water.diagnostics["ticks_processed"] == 0
+
+
+def test_run_snapshots_reused_mutable_envelopes_before_equal_time_lookahead():
+    # A streaming adapter may reuse a mutable Pydantic envelope. Batching must
+    # freeze a yielded record before advancing the iterator and seeing a later
+    # timestamp; retaining the same object reference loses the first event.
+    repo = FakeGateway()
+    first_at, second_at = "2026-02-11T03:00:00Z", "2026-02-11T03:15:00Z"
+
+    def reused_envelope_stream():
+        envelope = tick(first_at)
+        yield envelope
+        next_record = tick(second_at)
+        for field in type(envelope).model_fields:
+            setattr(envelope, field, getattr(next_record, field))
+        yield envelope
+
+    repo.iter_events = reused_envelope_stream
+    engine = DecisionEngine(repo, BUILDING)
+    assert engine.run() == []
+    assert engine.event_count == 2
+    assert engine._seen_ids == {"tick:"+first_at, "tick:"+second_at}
+    assert engine.water.diagnostics["ticks_processed"] == 2
+
+
+def test_narrow_configured_weak_band_midpoint_is_not_promoted_to_strong_inspection():
+    from decimal import Decimal
+    from engine.core import EngineConfig
+    low_floor = Decimal("1")
+    strong_floor = Decimal("1.000000000001")
+    rate = Decimal("1.0000000000005")
+    value = Decimal("100")
+    rows = [{"room_id": "R101", "timestamp_utc": START, "meter_total_l": str(value)}]
+    for i in range(1, 17):
+        value += rate
+        rows.append({"room_id": "R101", "timestamp_utc": utc(instant(START)+timedelta(minutes=15*i)),
+                     "meter_total_l": str(value)})
+    repo = FakeGateway()
+    repo.measurements["room_water.csv"] = rows
+    repo.states["R101"] = [state(t=r["timestamp_utc"], cleaning="clean") for r in rows]
+    repo.stream = [tick(r["timestamp_utc"]) for r in rows[1:]]
+    config = EngineConfig(water_low_min_l_per_interval=float(low_floor),
+                          water_min_l_per_interval=float(strong_floor))
+    engine = DecisionEngine(repo, BUILDING, config)
+    records = engine.run()
+    findings = water_records(records)
+    assert len(findings) == 1
+    assert findings[0].issue_type == "water_low_rate_review"
+    assert findings[0].action == "flag_anomaly"
+    assert findings[0].timestamp_utc == rows[16]["timestamp_utc"]
+    assert all(r.action != "request_inspection" for r in records)
+    assert not engine.rejections

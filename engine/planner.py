@@ -364,7 +364,8 @@ class DecisionEngine:
         records = []
         # Every fact available at a clock instant precedes its periodic scan.
         # Only equal-time envelopes are buffered; later facts stay unavailable.
-        for _, events in groupby(self.repo.iter_events(), key=lambda e: instant(e.available_at_utc)):
+        snapshots = (deepcopy(event) for event in self.repo.iter_events())
+        for _, events in groupby(snapshots, key=lambda e: instant(e.available_at_utc)):
             batch = sorted(events, key=lambda e: (e.event_type == "clock_tick", e.event_id))
             for event in batch:
                 records.extend(self.process(event))

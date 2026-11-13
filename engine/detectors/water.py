@@ -110,8 +110,9 @@ class WaterDetector:
             values = [v for _, v in flow]
             floor = self.config.water_min_l_per_interval
             ceiling = self.config.water_max_l_per_interval
-            if not all(floor - water_boundary_tolerance(floor) <= v
-                       <= ceiling + water_boundary_tolerance(ceiling) for v in values):
+            floor_tolerance = water_boundary_tolerance(floor, floor - self.config.water_low_min_l_per_interval)
+            ceiling_tolerance = water_boundary_tolerance(ceiling, ceiling - floor)
+            if not all(floor - floor_tolerance <= v <= ceiling + ceiling_tolerance for v in values):
                 continue
             if max(values) > min(values) * 2:
                 continue  # variable guest/operational consumption is not persistent base flow

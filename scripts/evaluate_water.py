@@ -2,8 +2,8 @@
 
 Runs a pinned trusted local Git version of WaterDetector and the current source
 against the same causal gateway and configuration. Data profiles remain separate.
-Only creation-time work-order envelopes are supplied; later repair narratives
-are never used as labels or as inputs to earlier detection.
+Creation-time work-order envelopes are supplied first; completion context is
+usable only once its event is available, never as a label for earlier detection.
 """
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from dataclasses import asdict
 from copy import deepcopy
 from datetime import timedelta
 from functools import lru_cache
+from itertools import groupby
 import hashlib
 import json
 from pathlib import Path
@@ -28,6 +29,7 @@ from ingestion.replay import ReplayData
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BASELINE_REF = "3ab9541"
+NUMERIC_ABS_TOL = 1e-9
 
 
 @lru_cache(maxsize=4096)
@@ -63,7 +65,12 @@ class Histogram:
         # Quality outliers are counted, not allowed to grow an unbounded histogram.
         if -2000 <= value <= 2000:
             self.bins[round(value*10)] += 1
-        described = round(value,6)  # reporting only; preserve detector inputs and raw extrema
+        described = value  # reporting only; preserve detector inputs/raw signed values
+        if value >= 0:
+            for boundary in (0.5,1.0,3.0,100.0):
+                if boundary-NUMERIC_ABS_TOL <= value <= boundary+NUMERIC_ABS_TOL:
+                    described = boundary
+                    break
         self.ranges["negative" if described < 0 else "zero" if described == 0 else
                     "positive_lt0.5" if described < 0.5 else "0.5_to_lt1" if described < 1 else
                     "1_to_lt3" if described < 3 else "3_to_100" if described <= 100 else "gt100"] += 1
@@ -85,7 +92,7 @@ class Histogram:
                 "min_l": self.minimum, "max_l": self.maximum,
                 "quantiles_0.1l_binned_within_plus_minus2000l": quantiles,
                 "quantile_covered_count": sum(self.bins.values()), "range_counts": dict(self.ranges),
-                "reporting_precision_note":"Range labels round to 1e-6 L to remove binary representation noise; detector inputs and raw extrema are unchanged."}
+                "reporting_precision_note":"Range labels snap only positive 0.5/1/3/100 L thresholds within 1e-9 L; raw signed deltas, negative signs, detector inputs and extrema are unchanged."}
 
 
 class TickCache:
@@ -198,7 +205,7 @@ class ExposureProfile:
             if delta is not None:
                 self.distributions["all_signed_room_pairs"].add(delta)
                 if delta < 0:
-                    self.counts["negative_step_le_0.5l"] += abs(delta) <= .5+1e-8
+                    self.counts["negative_step_le_0.5l"] += abs(delta) <= .5+NUMERIC_ABS_TOL
                     self.counts["negative_step_gt100l"] += abs(delta) > 100
             eligible = False
             if status not in {"nonnegative_pair", "negative_delta"}:
@@ -216,7 +223,7 @@ class ExposureProfile:
                 transition = any(room in {r.get("room_id"),r.get("from_room"),r.get("to_room")}
                                  and _time(readings[-2]["timestamp_utc"]) < _time(r["timestamp_utc"]) <= _time(now)
                                  and r.get("type") in {"checkin","checkin_early","checkin_after_wait","checkout","checkout_early","room_reassigned","stay_in_progress"} for r in recent)
-                work = _planned_water_work(room, now, orders)
+                work = any(_planned_water_work(room,row["timestamp_utc"],orders) for row in readings[-2:])
                 if vacant:
                     self.distributions["observed_vacant_night_pairs_before_operation_exclusions"].add(delta)
                     if room in cleaners or work:
@@ -238,12 +245,14 @@ class ExposureProfile:
                     self.counts["causally_eligible_signed_night_intervals"] += 1
                     self.per_room[room]["causally_eligible_signed_night_intervals"] += 1
                     self.distributions["eligible_signed_night_intervals"].add(delta)
-                    if delta >= -getattr(self.config,"water_weak_max_backstep_l",0.5)-1e-8:
+                    backstep = getattr(self.config,"water_weak_max_backstep_l",0.5)
+                    tolerance = min(NUMERIC_ABS_TOL,abs(backstep)*1e-6)
+                    if delta >= -backstep-tolerance:
                         self.counts["weak_pair_quality_eligible_night_intervals"] += 1
                     if status == "nonnegative_pair":
                         self.counts["eligible_nonnegative_night_intervals"] += 1
             self._eligible_runs[room] = self._eligible_runs[room]+1 if eligible else 0
-            self._weak_positive_runs[room] = self._weak_positive_runs[room]+1 if eligible and delta is not None and 1 <= delta < 3 else 0
+            self._weak_positive_runs[room] = self._weak_positive_runs[room]+1 if eligible and delta is not None and 1-NUMERIC_ABS_TOL <= delta < 3-NUMERIC_ABS_TOL else 0
             self.longest_eligible[room] = max(self.longest_eligible[room],self._eligible_runs[room])
             self.longest_positive_weak[room] = max(self.longest_positive_weak[room],self._weak_positive_runs[room])
         main = [r for r in repo.get_measurements("water_main.csv",begin,now,now)
@@ -266,7 +275,7 @@ class ExposureProfile:
                                   "longest_eligible_run_intervals":self.longest_eligible[room],
                                   "longest_positive_1_to_lt3l_run_intervals":self.longest_positive_weak[room]}
                             for room in self.rooms},
-                "interpretation":"Exposure/quality counts, not confirmed benign flow or leak labels. Causal-context-only exposure can include counter drops; weak pair-quality exposure separately excludes steps below the configured small-backstep bound. Negative deltas remain signed; no missing interval is imputed."}
+                "interpretation":"Exposure/quality counts, not confirmed benign flow or leak labels. Causal-context-only exposure can include counter drops; weak pair-quality exposure separately excludes steps below the configured small-backstep bound. Negative deltas remain signed; no missing interval is imputed. Exposure reflects availability at each observation time; a later-known work order can subsequently invalidate retained decision windows. Exposure is neither a label nor a full replay of later evidence revision."}
 
 
 def candidate_path(candidate):
@@ -344,7 +353,9 @@ def load_rule_pair(baseline_ref=BASELINE_REF):
                   "candidate_water_source_sha256":hashlib.sha256(new_source.encode()).hexdigest(),
                   "candidate_detector_sources_sha256":{p.name:_digest(p) for p in sorted((REPO_ROOT/"engine/detectors").glob("*.py"))},
                   "config_source_sha256":_digest(REPO_ROOT/"engine/core.py"),
-                  "shared_episode_tracker_source_sha256":_digest(REPO_ROOT/"engine/decisions.py")}
+                  "shared_episode_tracker_source_sha256":_digest(REPO_ROOT/"engine/decisions.py"),
+                  "shared_planner_source_sha256":_digest(REPO_ROOT/"engine/planner.py"),
+                  "event_time_policy":"equal-availability facts before clock scans; no future context"}
     return {"baseline":_module_factory(old_source,"baseline_"+revision),"candidate":_module_factory(new_source,"candidate_working_copy")},provenance
 
 
@@ -358,26 +369,50 @@ def evaluate_replay(repo,building,factories,config=None,sample_limit=12,max_tick
     ticks = 0
     last_tick = None
     began = time.perf_counter()
-    for event in repo.iter_events():
-        if event.event_type == "work_order_created":
-            # Ingestion's creation view redacts later repair/diagnosis narratives.
-            safe = {k:event.payload.get(k) for k in ("work_order_id","created_utc","asset_id","scheduled_utc","summary")}
-            if safe["work_order_id"]:
-                orders[safe["work_order_id"]] = safe
-        if event.event_type != "clock_tick":
-            continue
+    last_available = None
+    snapshots = (deepcopy(event) for event in repo.iter_events())
+    for available,events in groupby(snapshots,key=lambda e:_time(e.available_at_utc)):
         if max_ticks is not None and ticks >= max_ticks:
             break
-        now = event.available_at_utc
-        if last_tick is not None and _time(now)-_time(last_tick) != timedelta(minutes=15):
-            raise ValueError("Evaluation requires uninterrupted chronological quarter-hour ticks")
-        last_tick = now
-        cached.reset()
-        known_orders = list(orders.values())
-        exposure.observe(now,cached,known_orders)
-        for name,detector in detectors.items():
-            summaries[name].observe(detector.detect(event,cached,building,known_orders),now)
-        ticks += 1
+        if last_available is not None and available < last_available:
+            raise ValueError("Evaluation events must be ordered by availability")
+        last_available = available
+        batch = sorted(events,key=lambda e:(e.event_type == "clock_tick",e.event_id))
+        for event in batch:
+            occurrence = getattr(event,"timestamp_utc",event.available_at_utc)
+            if _time(occurrence) > available:
+                raise ValueError("Future occurrence cannot become known before it occurs")
+            source_stamp = getattr(getattr(event,"source",None),"timestamp_utc",None)
+            if source_stamp and _time(source_stamp) > available:
+                raise ValueError("Future source timestamp")
+            if event.event_type == "work_order_created":
+                # Creation view has no future outcome. Later disclosed context
+                # updates only when its completion envelope becomes available.
+                safe = {k:event.payload.get(k) for k in ("work_order_id","created_utc","asset_id","scheduled_utc","summary","assigned_to","type")}
+                if safe["work_order_id"]:
+                    orders[safe["work_order_id"]] = safe
+            elif event.event_type == "operational_event" and event.payload.get("type") == "work_order_completed":
+                identifier = event.payload.get("work_order_id") or getattr(getattr(event,"source",None),"record_id",None)
+                if identifier in orders:
+                    order = orders[identifier]
+                    order["observed_completed_utc"] = event.available_at_utc
+                    for field in ("summary","scheduled_utc","asset_id","assigned_to"):
+                        if event.payload.get(field) is not None:
+                            order[field] = deepcopy(event.payload[field])
+            if event.event_type != "clock_tick":
+                continue
+            if max_ticks is not None and ticks >= max_ticks:
+                break
+            now = event.available_at_utc
+            if last_tick is not None and _time(now)-_time(last_tick) != timedelta(minutes=15):
+                raise ValueError("Evaluation requires uninterrupted chronological quarter-hour ticks")
+            last_tick = now
+            cached.reset()
+            known_orders = list(orders.values())
+            exposure.observe(now,cached,known_orders)
+            for name,detector in detectors.items():
+                summaries[name].observe(detector.detect(event,cached,building,known_orders),now)
+            ticks += 1
     output = {"ticks_evaluated":ticks,"last_tick_utc":last_tick,"partial_run":max_ticks is not None,
               "elapsed_seconds":time.perf_counter()-began,"config":asdict(config),"exposure":exposure.report(),
               "rules":{name:summaries[name].report(detector) for name,detector in detectors.items()}}
@@ -441,7 +476,7 @@ def raw_completeness(data_dir):
                     signed.add(delta)
                     if delta < 0:
                         counts["room_negative_intervals"] += 1
-                        counts["room_small_negative_le0.5l"] += abs(delta) <= .5+1e-8
+                        counts["room_small_negative_le0.5l"] += abs(delta) <= .5+NUMERIC_ABS_TOL
                         counts["room_negative_gt100l"] += abs(delta) > 100
                         negative.add(delta)
                     elif delta <= 2000:
