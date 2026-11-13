@@ -684,3 +684,26 @@ def test_non_string_identity_fields_in_raw_events_are_neutralised(tmp_path):
     raw[0]["source_fields"]["type"] = "mutated"
     again = repo.get_events("2026-01-05T00:00:00Z", "2026-01-05T01:00:00Z", "2026-01-05T01:00:00Z")
     assert again[0]["source_fields"] == {"type": []}
+
+
+@pytest.mark.parametrize("raw_sf", ["null", "[]", '"text"', '{"vendor":42}'])
+def test_identity_sanitising_with_odd_source_fields_and_deep_copy(tmp_path, raw_sf):
+    d = tmp_path / "sf"
+    d.mkdir()
+    (d / "manifest.json").write_text(json.dumps({
+        "start_utc": "2026-01-05T00:00:00Z", "end_utc": "2026-01-05T01:00:00Z"}))
+    (d / "building.json").write_text(json.dumps({"building": {"rooms": [{"id": "R101"}]}}))
+    (d / "events.jsonl").write_text(
+        '{"event_id":"E1","timestamp_utc":"2026-01-05T00:10:00Z","type":[],'
+        '"room_id":["R101"],"source_fields":%s}\n' % raw_sf)
+    repo = ReplayData(d, use_llm=False)
+    payload = next(e for e in repo.iter_events() if e.event_id == "raw:E1").payload
+    assert payload["type"] == "unknown" and payload["room_id"] is None
+    assert payload["source_fields"]["type"] == [] and payload["source_fields"]["room_id"] == ["R101"]
+    if raw_sf == '{"vendor":42}':
+        assert payload["source_fields"]["vendor"] == 42
+    else:
+        assert payload["source_fields"]["source_fields"] == json.loads(raw_sf)
+    window = ("2026-01-05T00:00:00Z", "2026-01-05T01:00:00Z", "2026-01-05T01:00:00Z")
+    repo.get_events(*window)[0]["source_fields"]["room_id"].append("X")
+    assert repo.get_events(*window)[0]["source_fields"]["room_id"] == ["R101"]

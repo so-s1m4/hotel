@@ -4,6 +4,7 @@ Every getter takes ``as_of_utc`` and returns only what the hotel systems could
 have known at that instant. Returned dicts are fresh copies.
 """
 import os
+from copy import deepcopy
 import re
 from bisect import bisect_left, bisect_right
 from datetime import datetime, timedelta
@@ -378,8 +379,8 @@ class ReplayData:
 def public_event(ev: dict) -> dict[str, Any]:
     """Copy of a raw event with its original source instant (sub-second precision)."""
     out = dict(ev)
-    if isinstance(out.get("source_fields"), dict):
-        out["source_fields"] = dict(out["source_fields"])
+    if "source_fields" in out:  # nested original values: never share with the cache
+        out["source_fields"] = deepcopy(out["source_fields"])
     precise = out.pop("_source_ts", None)
     if precise is not None:
         out["timestamp_utc"] = precise

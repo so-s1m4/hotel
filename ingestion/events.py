@@ -174,7 +174,10 @@ def _raw_payload(event: dict) -> dict:
     clash = {k: event.pop(k) for k in RESERVED_PAYLOAD_KEYS if k in event}
     if clash:
         existing = event.get("source_fields")
-        event["source_fields"] = {**(existing if isinstance(existing, dict) else {}), **clash}
+        if "source_fields" in event and not isinstance(existing, dict):
+            clash["source_fields"] = existing
+            existing = None
+        event["source_fields"] = {**(existing or {}), **clash}
     return event
 
 def _raw_events(repo: "ReplayData") -> list[NormalizedEventV1]:

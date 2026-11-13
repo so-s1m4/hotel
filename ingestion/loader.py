@@ -412,7 +412,12 @@ def _sanitize_identity_fields(event: dict) -> None:
             invalid.setdefault("type", event["type"])
         event["type"] = "unknown"
     if invalid:
-        event.setdefault("source_fields", {}).update(invalid)
+        existing = event.get("source_fields")
+        if "source_fields" in event and not isinstance(existing, dict):
+            # a raw "source_fields" value that is not a mapping is itself kept
+            invalid["source_fields"] = existing
+            existing = None
+        event["source_fields"] = {**(existing or {}), **invalid}
 
 
 class Dataset:
