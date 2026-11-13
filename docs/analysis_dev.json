@@ -1,0 +1,528 @@
+{
+  "analysis_version": "1.0",
+  "retrospective_only": true,
+  "metadata": {
+    "profile": "dev",
+    "model_id": "PLATO-40",
+    "start_utc": "2026-01-01T00:00:00Z",
+    "end_utc": "2027-01-01T00:00:00Z",
+    "days": 365
+  },
+  "comfort_band_c": [
+    20,
+    23
+  ],
+  "temperature": {
+    "samples": 1401600,
+    "occupied_samples": 837046,
+    "cold_samples": 63266,
+    "hot_samples": 209068,
+    "cold_closed_window_samples": 59163,
+    "missing_temperature": 7240,
+    "vacant_samples": 555044,
+    "unknown_samples": 2262,
+    "implausible_temperature": 8
+  },
+  "temperature_by_room": {
+    "R101": {
+      "samples": 35040,
+      "occupied_samples": 22099,
+      "cold_samples": 1220,
+      "hot_samples": 7789,
+      "cold_closed_window_samples": 1151,
+      "missing_temperature": 108,
+      "vacant_samples": 12833
+    },
+    "R102": {
+      "samples": 35040,
+      "occupied_samples": 20734,
+      "cold_samples": 3520,
+      "hot_samples": 4312,
+      "cold_closed_window_samples": 3323,
+      "vacant_samples": 14195,
+      "missing_temperature": 111
+    },
+    "R103": {
+      "samples": 35040,
+      "occupied_samples": 21754,
+      "cold_samples": 2606,
+      "hot_samples": 4410,
+      "cold_closed_window_samples": 2428,
+      "vacant_samples": 13177,
+      "missing_temperature": 109
+    },
+    "R104": {
+      "samples": 35040,
+      "occupied_samples": 19704,
+      "cold_samples": 1684,
+      "hot_samples": 4908,
+      "cold_closed_window_samples": 1618,
+      "vacant_samples": 15224,
+      "missing_temperature": 112
+    },
+    "R105": {
+      "samples": 35040,
+      "occupied_samples": 20606,
+      "cold_samples": 2813,
+      "hot_samples": 4751,
+      "cold_closed_window_samples": 2555,
+      "vacant_samples": 14340,
+      "missing_temperature": 94
+    },
+    "R106": {
+      "samples": 35040,
+      "occupied_samples": 20505,
+      "cold_samples": 2757,
+      "hot_samples": 3866,
+      "cold_closed_window_samples": 2630,
+      "vacant_samples": 14425,
+      "missing_temperature": 110
+    },
+    "R107": {
+      "samples": 35040,
+      "occupied_samples": 21199,
+      "cold_samples": 3775,
+      "hot_samples": 4151,
+      "cold_closed_window_samples": 3559,
+      "missing_temperature": 157,
+      "vacant_samples": 13684
+    },
+    "R108": {
+      "samples": 35040,
+      "unknown_samples": 825,
+      "missing_temperature": 98,
+      "occupied_samples": 19493,
+      "cold_samples": 2776,
+      "hot_samples": 4724,
+      "cold_closed_window_samples": 2462,
+      "vacant_samples": 14624
+    },
+    "R109": {
+      "samples": 35040,
+      "occupied_samples": 20090,
+      "cold_samples": 3302,
+      "hot_samples": 4942,
+      "cold_closed_window_samples": 3056,
+      "missing_temperature": 99,
+      "vacant_samples": 14851
+    },
+    "R110": {
+      "samples": 35040,
+      "occupied_samples": 20086,
+      "cold_samples": 1963,
+      "hot_samples": 4238,
+      "cold_closed_window_samples": 1799,
+      "vacant_samples": 14847,
+      "missing_temperature": 107
+    },
+    "R201": {
+      "samples": 35040,
+      "occupied_samples": 20407,
+      "cold_samples": 929,
+      "hot_samples": 5035,
+      "cold_closed_window_samples": 873,
+      "vacant_samples": 14310,
+      "missing_temperature": 322,
+      "implausible_temperature": 1
+    },
+    "R202": {
+      "samples": 35040,
+      "occupied_samples": 21118,
+      "cold_samples": 74,
+      "hot_samples": 5242,
+      "cold_closed_window_samples": 47,
+      "vacant_samples": 13855,
+      "missing_temperature": 67
+    },
+    "R203": {
+      "samples": 35040,
+      "occupied_samples": 21027,
+      "cold_samples": 1449,
+      "hot_samples": 5847,
+      "cold_closed_window_samples": 1369,
+      "missing_temperature": 80,
+      "vacant_samples": 13933
+    },
+    "R204": {
+      "samples": 35040,
+      "occupied_samples": 21995,
+      "cold_samples": 1115,
+      "hot_samples": 6439,
+      "cold_closed_window_samples": 1012,
+      "vacant_samples": 12705,
+      "missing_temperature": 339,
+      "implausible_temperature": 1
+    },
+    "R205": {
+      "samples": 35040,
+      "occupied_samples": 20207,
+      "cold_samples": 840,
+      "hot_samples": 5294,
+      "cold_closed_window_samples": 788,
+      "missing_temperature": 217,
+      "vacant_samples": 14615,
+      "implausible_temperature": 1
+    },
+    "R206": {
+      "samples": 35040,
+      "occupied_samples": 20392,
+      "cold_samples": 1722,
+      "hot_samples": 4842,
+      "cold_closed_window_samples": 1625,
+      "vacant_samples": 14584,
+      "missing_temperature": 64
+    },
+    "R207": {
+      "samples": 35040,
+      "occupied_samples": 20595,
+      "cold_samples": 862,
+      "hot_samples": 6312,
+      "cold_closed_window_samples": 724,
+      "vacant_samples": 14374,
+      "missing_temperature": 71
+    },
+    "R208": {
+      "samples": 35040,
+      "occupied_samples": 21924,
+      "cold_samples": 757,
+      "hot_samples": 6275,
+      "cold_closed_window_samples": 638,
+      "vacant_samples": 12989,
+      "missing_temperature": 127
+    },
+    "R209": {
+      "samples": 35040,
+      "occupied_samples": 20791,
+      "cold_samples": 2721,
+      "hot_samples": 3945,
+      "cold_closed_window_samples": 2519,
+      "vacant_samples": 14117,
+      "missing_temperature": 132
+    },
+    "R210": {
+      "samples": 35040,
+      "occupied_samples": 22189,
+      "cold_samples": 2146,
+      "hot_samples": 5237,
+      "cold_closed_window_samples": 2021,
+      "vacant_samples": 12604,
+      "missing_temperature": 247
+    },
+    "R301": {
+      "samples": 35040,
+      "unknown_samples": 826,
+      "missing_temperature": 275,
+      "occupied_samples": 19647,
+      "cold_samples": 1143,
+      "hot_samples": 5841,
+      "cold_closed_window_samples": 1107,
+      "vacant_samples": 14292
+    },
+    "R302": {
+      "samples": 35040,
+      "occupied_samples": 20138,
+      "cold_samples": 1237,
+      "hot_samples": 4848,
+      "cold_closed_window_samples": 1207,
+      "vacant_samples": 14617,
+      "missing_temperature": 285
+    },
+    "R303": {
+      "samples": 35040,
+      "occupied_samples": 19739,
+      "cold_samples": 666,
+      "hot_samples": 5293,
+      "cold_closed_window_samples": 637,
+      "missing_temperature": 351,
+      "vacant_samples": 14948,
+      "implausible_temperature": 2
+    },
+    "R304": {
+      "samples": 35040,
+      "occupied_samples": 21277,
+      "cold_samples": 2149,
+      "hot_samples": 5812,
+      "cold_closed_window_samples": 2111,
+      "vacant_samples": 13473,
+      "missing_temperature": 290
+    },
+    "R305": {
+      "samples": 35040,
+      "occupied_samples": 21504,
+      "cold_samples": 1151,
+      "hot_samples": 4554,
+      "cold_closed_window_samples": 1048,
+      "vacant_samples": 13251,
+      "missing_temperature": 285
+    },
+    "R306": {
+      "samples": 35040,
+      "unknown_samples": 459,
+      "occupied_samples": 20294,
+      "cold_samples": 583,
+      "hot_samples": 5446,
+      "cold_closed_window_samples": 529,
+      "vacant_samples": 14018,
+      "missing_temperature": 268,
+      "implausible_temperature": 1
+    },
+    "R307": {
+      "samples": 35040,
+      "occupied_samples": 21670,
+      "cold_samples": 440,
+      "hot_samples": 6919,
+      "cold_closed_window_samples": 420,
+      "vacant_samples": 13089,
+      "missing_temperature": 280,
+      "implausible_temperature": 1
+    },
+    "R308": {
+      "samples": 35040,
+      "occupied_samples": 22472,
+      "cold_samples": 925,
+      "hot_samples": 5666,
+      "cold_closed_window_samples": 837,
+      "missing_temperature": 563,
+      "vacant_samples": 12005
+    },
+    "R309": {
+      "samples": 35040,
+      "occupied_samples": 19497,
+      "cold_samples": 1424,
+      "hot_samples": 4503,
+      "cold_closed_window_samples": 1311,
+      "vacant_samples": 15258,
+      "missing_temperature": 285
+    },
+    "R310": {
+      "samples": 35040,
+      "occupied_samples": 20654,
+      "cold_samples": 2289,
+      "hot_samples": 5757,
+      "cold_closed_window_samples": 2131,
+      "missing_temperature": 291,
+      "vacant_samples": 14095
+    },
+    "R401": {
+      "samples": 35040,
+      "occupied_samples": 21166,
+      "cold_samples": 917,
+      "hot_samples": 4090,
+      "cold_closed_window_samples": 854,
+      "vacant_samples": 13770,
+      "missing_temperature": 104
+    },
+    "R402": {
+      "samples": 35040,
+      "occupied_samples": 20936,
+      "cold_samples": 1166,
+      "hot_samples": 5171,
+      "cold_closed_window_samples": 1126,
+      "missing_temperature": 58,
+      "vacant_samples": 14046
+    },
+    "R403": {
+      "samples": 35040,
+      "occupied_samples": 20554,
+      "cold_samples": 1704,
+      "hot_samples": 4504,
+      "cold_closed_window_samples": 1664,
+      "vacant_samples": 14222,
+      "missing_temperature": 264
+    },
+    "R404": {
+      "samples": 35040,
+      "occupied_samples": 20962,
+      "cold_samples": 679,
+      "hot_samples": 5930,
+      "cold_closed_window_samples": 665,
+      "vacant_samples": 13975,
+      "missing_temperature": 103
+    },
+    "R405": {
+      "samples": 35040,
+      "occupied_samples": 21324,
+      "cold_samples": 1214,
+      "hot_samples": 5604,
+      "cold_closed_window_samples": 1149,
+      "vacant_samples": 13504,
+      "missing_temperature": 212
+    },
+    "R406": {
+      "samples": 35040,
+      "unknown_samples": 152,
+      "occupied_samples": 20534,
+      "cold_samples": 1673,
+      "hot_samples": 4610,
+      "cold_closed_window_samples": 1621,
+      "vacant_samples": 14202,
+      "missing_temperature": 151,
+      "implausible_temperature": 1
+    },
+    "R407": {
+      "samples": 35040,
+      "occupied_samples": 22002,
+      "cold_samples": 2714,
+      "hot_samples": 4900,
+      "cold_closed_window_samples": 2556,
+      "missing_temperature": 73,
+      "vacant_samples": 12965
+    },
+    "R408": {
+      "samples": 35040,
+      "occupied_samples": 22614,
+      "cold_samples": 705,
+      "hot_samples": 5931,
+      "cold_closed_window_samples": 678,
+      "vacant_samples": 12357,
+      "missing_temperature": 69
+    },
+    "R409": {
+      "samples": 35040,
+      "occupied_samples": 21736,
+      "cold_samples": 238,
+      "hot_samples": 6026,
+      "cold_closed_window_samples": 231,
+      "vacant_samples": 13251,
+      "missing_temperature": 53
+    },
+    "R410": {
+      "samples": 35040,
+      "occupied_samples": 21411,
+      "cold_samples": 1218,
+      "hot_samples": 5104,
+      "cold_closed_window_samples": 1084,
+      "vacant_samples": 13420,
+      "missing_temperature": 209
+    }
+  },
+  "temperature_by_orientation": {
+    "S": {
+      "samples": 700800,
+      "occupied_samples": 416898,
+      "cold_samples": 28276,
+      "hot_samples": 105674,
+      "cold_closed_window_samples": 26732,
+      "missing_temperature": 3786,
+      "vacant_samples": 279285,
+      "implausible_temperature": 5,
+      "unknown_samples": 826
+    },
+    "N": {
+      "samples": 700800,
+      "occupied_samples": 420148,
+      "cold_samples": 34990,
+      "hot_samples": 103394,
+      "cold_closed_window_samples": 32431,
+      "vacant_samples": 275759,
+      "missing_temperature": 3454,
+      "unknown_samples": 1436,
+      "implausible_temperature": 3
+    }
+  },
+  "telemetry_duplicates_skipped": 40,
+  "telemetry_out_of_order_skipped": 0,
+  "water": {
+    "room_samples": 1401600,
+    "valid_room_intervals": 1385259,
+    "valid_room_interval_liters": 1526331.000000038,
+    "missing_or_invalid_room_samples": 5267,
+    "vacant_night_flow_intervals_ge_3l": 49,
+    "vacant_night_flow_liters_ge_3l": 1126.3999999999978,
+    "room_negative_deltas": 8103,
+    "room_counter_drops_ge100l": 2,
+    "valid_main_intervals": 35039,
+    "valid_main_interval_liters": 1666624.6,
+    "complete_main_room_intervals": 22969,
+    "complete_interval_residual_liters": 86434.89999998744,
+    "median_complete_interval_residual_liters": 3.599999999803913
+  },
+  "energy": {
+    "samples": 35040,
+    "valid_samples": 35040,
+    "building_load_kwh": 171394.56324999934,
+    "hvac_electric_kwh": 58159.89424999998,
+    "pv_kwh": 55269.149250000024,
+    "grid_import_kwh": 124790.86874999978,
+    "grid_export_kwh": 6822.995249999983,
+    "battery_charge_kwh": 18784.404500000124,
+    "battery_discharge_kwh": 16941.959500000055,
+    "balance_deviation_samples": 0,
+    "grid_import_cost_eur_observed": 27639.319013450116,
+    "cost_covered_samples": 35040
+  },
+  "equipment": {
+    "HP1:heat_output_kw:samples": 35040,
+    "HP1:electric_kw:samples": 35040,
+    "HP1:supply_temp_c:samples": 35040,
+    "HP1:status:samples": 35040,
+    "AHU1:airflow_m3h:samples": 35040,
+    "AHU1:filter_dp_pa:samples": 35040,
+    "AHU1:filter_dp_pa:ge250": 548,
+    "AHU1:fan_kw:samples": 35040,
+    "AHU1:supply_air_c:samples": 35040,
+    "AHU1:filter_dp_pa:missing": 935,
+    "AHU1:airflow_m3h:missing": 119,
+    "HP1:supply_temp_c:missing": 88,
+    "HP1:heat_output_kw:missing": 27
+  },
+  "logistics": {
+    "WASTE_F1:recorded_full_samples": 0,
+    "WASTE_F1:recorded_ge80_samples": 0,
+    "WASTE_F2:recorded_full_samples": 0,
+    "WASTE_F2:recorded_ge80_samples": 0,
+    "WASTE_F3:recorded_full_samples": 0,
+    "WASTE_F3:recorded_ge80_samples": 0,
+    "WASTE_F4:recorded_full_samples": 0,
+    "WASTE_F4:recorded_ge80_samples": 0,
+    "WASTE_MAIN:recorded_full_samples": 72,
+    "WASTE_MAIN:recorded_ge80_samples": 176,
+    "VEND1:stock_drinks:recorded_empty_samples": 350,
+    "VEND1:stock_snacks:recorded_empty_samples": 0
+  },
+  "staffing": {
+    "robot:scheduled:shifts": 717,
+    "cleaner:scheduled:shifts": 745,
+    "technician:scheduled:shifts": 241,
+    "cleaner:sick:shifts": 24,
+    "robot:out_of_service:shifts": 13,
+    "technician:sick:shifts": 3,
+    "technician:vacation:shifts": 17
+  },
+  "event_counts": {
+    "stay_in_progress": 36,
+    "vending_restocked": 105,
+    "bms_alarm": 926,
+    "waste_pickup": 104,
+    "checkout": 3616,
+    "robot_floor_cleaning_started": 3103,
+    "cleaning_started": 3714,
+    "robot_floor_cleaning_completed": 3103,
+    "cleaning_completed": 3714,
+    "arrival_waiting_room": 24,
+    "checkin_after_wait": 24,
+    "floor_bin_emptied": 402,
+    "checkin": 3255,
+    "checkin_early": 425,
+    "checkout_early": 98,
+    "no_show": 71,
+    "vending_out_of_stock": 20,
+    "waste_bin_full": 3,
+    "room_reassigned": 1
+  },
+  "observed_checkout_to_cleaning_minutes_median": 75.0,
+  "checkout_cleaning_pairs": 3714,
+  "source_sha256": {
+    "manifest.json": "73fb3c10d9531c3a11d12e13116122a6b598ab05fc3b07cb438ef718ecebfde2",
+    "building.json": "671785fcc397b9f61811c4ae04cffdd49a5468621bf310f9424238512be397d3",
+    "events.jsonl": "217d6211d872a450c884a9e421f5a84d50539049fe3807921d7addb5eaf1fc9b",
+    "room_telemetry.csv": "71278be6b629344f65e9bb469e39e7a061dd09d4028af524256f167ed7251ca8",
+    "room_water.csv": "009d42067301a01ca073228ceb307aa20eef58ab01861cd3ccf6e8fd2b41126b",
+    "water_main.csv": "0d34e062b480c7da26ce660a7dd95720a70a897534350902d3927dfb56c45835",
+    "energy.csv": "31dd0c2c7b351d1bea16fef68b72301212ee9820d1493f146f5d48e689cca6c3",
+    "tariff.csv": "dcb6201d8de5e2725fbd37f29380d715157259ab2ec832eb268cbc8e18c12ca6",
+    "equipment.csv": "a8406da126a33e03d5b29fb8faf78b92a18f6713163659ab597615d674dcb879",
+    "logistics.csv": "720157ac43503d57b5e8a81e3c7cf47f89ff6ba80d2e627f717aaeafc74b0892",
+    "staff_roster.csv": "436af432d59db36d8ae59d99e765feb61bc08d7d5622158e73e6982bd671d6ec"
+  }
+}

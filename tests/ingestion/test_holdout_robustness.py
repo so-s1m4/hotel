@@ -637,7 +637,13 @@ def test_unknowns_valid_empty_streams_remain_unknown_and_pipeline_completes(
         assert all(d["issue_type"] not in {"room_turnaround", "heating_comfort"}
                    for d in decisions)
     else:
-        assert all(d["action"] in {"notify_guest", "defer_action"} for d in decisions)
+        # Without sensor streams nothing measurement-based may be detected. Booking-
+        # derived flags (e.g. the engine's occupancy_surge, added after this suite
+        # was written) are legitimate.
+        assert all(d["action"] in {"notify_guest", "defer_action", "flag_anomaly"}
+                   for d in decisions)
+        assert all(d["issue_type"] not in {"heating_comfort", "heating_performance",
+                                           "water_leak"} for d in decisions)
 
 def test_unknowns_future_values_preserved_without_future_outcome_or_staff_availability(
         unknown_data, unknown_cli):

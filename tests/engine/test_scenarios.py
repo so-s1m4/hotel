@@ -211,3 +211,15 @@ def test_s03_single_cold_reading_or_gap_not_sustained():
     repo.measurements["room_telemetry.csv"][3]["temperature_c"] = 21
     rows = DecisionEngine(repo, BUILDING).process(tick())
     assert all(r.issue_type != "heating_comfort" for r in rows)
+
+
+@pytest.mark.parametrize("setpoint,action", [(24, "adjust_room_setpoint"), (21, "notify_guest")])
+def test_s03_overheating_never_claims_heating_only_plant_can_cool(setpoint, action):
+    repo = energy_repo(temperature=26, setpoint=setpoint)
+    engine = DecisionEngine(repo, BUILDING)
+    rows = engine.process(tick())
+    row = next(r for r in rows if r.issue_type == "heating_comfort")
+    assert row.action == action
+    assert "cool" in row.reason
+    if action == "adjust_room_setpoint":
+        assert next(a for a in engine.executor.audit if a["decision_id"] == row.event_id)["parameters"]["setpoint_c"] == 23

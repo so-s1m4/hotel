@@ -294,6 +294,20 @@ class ReplayData:
         out.sort(key=lambda r: (r["start_utc"], r["resource_id"], r["shift_id"]))
         return out
 
+    def _tariff_index(self):
+        """Static sorted target timestamps; availability is still checked per query."""
+        if "tariff_targets" not in self._idx:
+            rows = self.ds.tariffs  # sorted by (timestamp_utc, published_utc)
+            self._idx["tariff_targets"] = (rows, [r["timestamp_utc"] for r in rows])
+        return self._idx["tariff_targets"]
+
+    def _forecast_index(self):
+        """Targets are indexed once; issue timestamps are built lazily per target."""
+        if "forecast_targets" not in self._idx:
+            by_target = self.ds.forecasts
+            self._idx["forecast_targets"] = (by_target, list(by_target), {})
+        return self._idx["forecast_targets"]
+
     # ------------------------------------------------------- measurements
     def get_measurements(self, filename: str, start_utc: str, end_utc: str,
                          as_of_utc: str, entity_id: str | None = None,
@@ -313,15 +327,17 @@ class ReplayData:
         """Per target hour in [hour(as_of), until]: latest forecast issued <= as_of."""
         as_of, until = norm_ts(as_of_utc), norm_ts(until_utc)
         first = as_of[:13] + ":00:00Z"
+        by_target, targets, issue_index = self._forecast_index()
+        lo, hi = bisect_left(targets, first), bisect_right(targets, until)
         out = []
-        for target, rows in self.ds.forecasts.items():
-            if target < first:
-                continue
-            if target > until:
-                break
-            known = [r for r in rows if r["issued_utc"] <= as_of]
+        for target in targets[lo:hi]:
+            rows = by_target[target]
+            issued = issue_index.get(target)
+            if issued is None:
+                issued = issue_index[target] = [r["issued_utc"] for r in rows]
+            known = bisect_right(issued, as_of)
             if known:
-                out.append(dict(known[-1]))
+                out.append(dict(rows[known - 1]))
         return out
 
     def get_tariffs(self, as_of_utc: str, until_utc: str) -> list[dict[str, Any]]:
@@ -332,10 +348,11 @@ class ReplayData:
 
     def _known_tariffs(self, first: str, last: str, as_of: str) -> list[dict[str, Any]]:
         """Per target hour the most recently published price known at as_of."""
+        rows, targets = self._tariff_index()
+        lo, hi = bisect_left(targets, first), bisect_right(targets, last)
         best: dict[str, dict] = {}
-        for row in self.ds.tariffs:  # sorted by (timestamp, published): later wins
-            if (first <= row["timestamp_utc"] <= last and row.get("published_utc") is not None
-                    and row["published_utc"] <= as_of):
+        for row in rows[lo:hi]:  # sorted by (timestamp, published): later revision wins
+            if row.get("published_utc") is not None and row["published_utc"] <= as_of:
                 best[row["timestamp_utc"]] = row
         return [dict(best[key]) for key in sorted(best)]
 

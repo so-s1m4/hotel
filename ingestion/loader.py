@@ -287,6 +287,16 @@ class Series:
                 new_lines.append(line_list[i])
             groups[key] = (new_ts, new_lines)
         self.groups = groups
+        # Group membership is immutable after loading. Preserve the original sorted
+        # key order once, rather than rescanning/sorting every entity lookup.
+        self._all_keys = tuple(sorted(groups))
+        by_entity: dict[str, list[tuple[str, str]]] = {}
+        by_metric: dict[str, list[tuple[str, str]]] = {}
+        for key in self._all_keys:
+            by_entity.setdefault(key[0], []).append(key)
+            by_metric.setdefault(key[1], []).append(key)
+        self._entity_keys = {name: tuple(keys) for name, keys in by_entity.items()}
+        self._metric_keys = {name: tuple(keys) for name, keys in by_metric.items()}
         self.entities = sorted({k[0] for k in groups if k[0]})
         if self.duplicates_dropped:
             log.info("%s: dropped %d duplicate rows (same timestamp+key)",
@@ -309,9 +319,16 @@ class Series:
         return {c: parse_value(c, cells[i].strip()) for i, c in enumerate(cols)}
 
     def _keys(self, entity_id: str | None, metric: str | None) -> list[tuple[str, str]]:
-        return sorted(k for k in self.groups
-                      if (entity_id is None or not self.entity_col or k[0] == entity_id)
-                      and (metric is None or not self.metric_col or k[1] == metric))
+        entity_filter = entity_id is not None and bool(self.entity_col)
+        metric_filter = metric is not None and bool(self.metric_col)
+        if entity_filter and metric_filter:
+            key = (entity_id, metric)
+            return [key] if key in self.groups else []
+        if entity_filter:
+            return list(self._entity_keys.get(entity_id, ()))
+        if metric_filter:
+            return list(self._metric_keys.get(metric, ()))
+        return list(self._all_keys)
 
     def query(self, start: str, end: str, entity_id: str | None = None,
               metric: str | None = None) -> list[dict[str, Any]]:
