@@ -101,7 +101,7 @@ class ReplayData:
         else:
             rows, ts = idx["by_room"].get(room_id, []), idx["by_room_ts"].get(room_id, [])
         lo, hi = bisect_left(ts, start), bisect_right(ts, end)
-        return [dict(ev) for ev in rows[lo:hi]
+        return [public_event(ev) for ev in rows[lo:hi]
                 if event_type is None or ev.get("type") == event_type]
 
     # -------------------------------------------------------------- rooms
@@ -356,6 +356,15 @@ class ReplayData:
     def audit(self) -> dict[str, Any]:
         """Row counts and de-duplication counters for files loaded so far."""
         return dict(self.ds.audit)
+
+
+def public_event(ev: dict) -> dict[str, Any]:
+    """Copy of a raw event with its original source instant (sub-second precision)."""
+    out = dict(ev)
+    precise = out.pop("_source_ts", None)
+    if precise is not None:
+        out["timestamp_utc"] = precise
+    return out
 
 
 def work_order_view(row: dict, as_of: str) -> dict[str, Any]:

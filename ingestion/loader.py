@@ -54,12 +54,59 @@ REQUIRED_FILES = (
 )
 
 
+# Columns without which a file cannot be replayed causally. A zero-row file with
+# a header is a valid empty stream; a file without these columns is schema loss.
+REQUIRED_COLUMNS: dict[str, tuple[str, ...]] = {
+    "bookings.csv": ("booking_id", "room_id", "created_utc", "arrival_utc", "departure_utc"),
+    "access_log.csv": ("timestamp_utc", "door_id"),
+    "room_telemetry.csv": ("timestamp_utc", "room_id"),
+    "room_water.csv": ("timestamp_utc", "room_id", "meter_total_l"),
+    "water_main.csv": ("timestamp_utc", "meter_total_l"),
+    "energy.csv": ("timestamp_utc",),
+    "weather.csv": ("timestamp_utc",),
+    "weather_forecast.csv": ("issued_utc", "target_utc"),
+    "tariff.csv": ("timestamp_utc", "published_utc"),
+    "equipment.csv": ("timestamp_utc", "asset_id", "metric", "value"),
+    "logistics.csv": ("timestamp_utc", "asset_id", "metric", "value"),
+    "staff_roster.csv": ("shift_id", "resource_id", "start_utc", "end_utc", "status",
+                         "status_known_utc"),
+    "work_orders.csv": ("work_order_id", "created_utc"),
+    "guest_requests.csv": ("request_id", "timestamp_utc", "request_type", "text"),
+}
+
+
+def read_header(path: Path) -> list[str]:
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        return [c.strip() for c in next(csv.reader(handle), [])]
+
+
+def check_headers(root: Path) -> list[str]:
+    """Problems with required CSV headers (empty list = fine). Missing files are skipped."""
+    problems = []
+    for name, required in REQUIRED_COLUMNS.items():
+        path = root / name
+        if not path.is_file():
+            continue
+        header = read_header(path)
+        if not header:
+            # zero-byte file: tolerated as an empty stream (existing fixtures rely on
+            # it) but reported loudly through Dataset.audit / logs, never silently
+            continue
+        lacking = [c for c in required if c not in header]
+        if lacking:
+            problems.append(f"{name}: missing column(s) {', '.join(lacking)}")
+    return problems
+
+
 def inspect_dataset(data_dir: str | Path) -> dict:
-    """Preflight: check required inputs and return dataset metadata."""
+    """Preflight: required files and CSV headers; returns dataset metadata."""
     root = Path(data_dir)
     missing = [name for name in REQUIRED_FILES if not (root / name).is_file()]
     if missing:
         raise ValueError(f"Missing dataset files in {root}: {', '.join(missing)}")
+    problems = check_headers(root)
+    if problems:
+        raise ValueError(f"Unusable dataset schema in {root}: {'; '.join(problems)}")
     manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8-sig"))
     building = json.loads((root / "building.json").read_text(encoding="utf-8-sig"))
     return {
@@ -107,6 +154,14 @@ def data_ts(value: str) -> str:
     if parsed.microsecond:
         parsed = parsed.replace(microsecond=0) + timedelta(seconds=1)
     return fmt_ts(parsed)
+
+
+def source_ts(value: str) -> str:
+    """Source instant in UTC with its ORIGINAL precision (fractions kept)."""
+    parsed = parse_ts(value)
+    if not parsed.microsecond:
+        return fmt_ts(parsed)
+    return parsed.strftime("%Y-%m-%dT%H:%M:%S.%f").rstrip("0") + "Z"
 
 
 def shift_ts(value: str, **delta: float) -> str:
@@ -179,12 +234,14 @@ class Series:
             ts = head[ts_i]
             if not (len(ts) == 20 and ts[19] == "Z" and ts[10] == "T"):
                 try:  # +00:00, fractional seconds, lowercase z, local offsets ...
-                    ts = data_ts(ts)
+                    raw_ts = ts
+                    ts = data_ts(raw_ts)       # lookup key: rounded UP, never early
+                    shown = source_ts(raw_ts)  # returned value keeps source precision
                 except (ValueError, TypeError):
                     self.bad_rows += 1
                     continue
                 cells = list(line) if isinstance(line, tuple) else line.split(",")
-                cells[ts_i] = ts
+                cells[ts_i] = shown
                 line = tuple(cells)
             key = (head[ent_i].strip() if ent_i is not None else "",
                    head[met_i].strip() if met_i is not None else "")
@@ -194,7 +251,12 @@ class Series:
             ts_list, line_list = group
             if ts_list:
                 if ts == ts_list[-1]:
-                    if filename != "access_log.csv" or line == line_list[-1]:
+                    # same key second: a duplicate unless the source instants differ
+                    # (distinct sub-second readings are both kept) or it is a door log
+                    distinct = isinstance(line, tuple) and line != line_list[-1] and (
+                        line[ts_i] != (line_list[-1][ts_i] if isinstance(line_list[-1], tuple)
+                                       else ts))
+                    if not distinct and (filename != "access_log.csv" or line == line_list[-1]):
                         self.duplicates_dropped += 1
                         continue
                 elif ts < ts_list[-1]:
@@ -315,8 +377,18 @@ class Dataset:
         self.audit: dict[str, Any] = {}
         self._series: dict[str, Series] = {}
         self._cache: dict[str, Any] = {}
+        self._note_empty_files()
 
     # -- generic helpers
+    def _note_empty_files(self) -> None:
+        for name in REQUIRED_COLUMNS:
+            path = self.dir / name
+            if path.is_file() and path.stat().st_size == 0:
+                self.audit[name + ":empty_no_header"] = True
+                log.warning("%s is a zero-byte file (no header): treated as an empty stream", name)
+            elif not path.is_file():
+                self.audit[name + ":missing"] = True
+
     def _memo(self, name: str, build):
         if name not in self._cache:
             self._cache[name] = build()
@@ -474,7 +546,12 @@ class Dataset:
                         bad += 1
                         continue
                     try:
-                        ts = data_ts(ts)
+                        raw_ts = ts
+                        ts = data_ts(raw_ts)
+                        if not (len(raw_ts) == 20 and raw_ts.endswith("Z")):
+                            precise = source_ts(raw_ts)
+                            if precise != ts:
+                                event["_source_ts"] = precise  # original instant, kept
                     except (ValueError, TypeError, AttributeError):
                         bad += 1
                         continue

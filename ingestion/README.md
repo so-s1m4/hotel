@@ -107,3 +107,21 @@ data (synthetic, no real-world claims):
 Two things follow for consumers: a negative water delta is almost always jitter, not a
 meter exchange (only the multi-thousand-litre drops coincide with metering work orders), and a whole floor
 going blank at once points at the gateway, not at forty individual sensors.
+
+## Robustness to unseen input (holdout)
+
+- UTF-8 BOM, CRLF, quoted cells (embedded commas/newlines), reordered or extra columns.
+- Timestamps in other spellings (`+00:00`, lowercase `z`, local offsets) are converted to
+  UTC. Sub-second source instants are kept in the returned rows/events, but their
+  **availability key rounds up to the next full second**, so a fact is never visible
+  before its true instant (at most one second late). Within one second events are
+  ordered by `event_id`.
+- A CSV header that lacks required columns is rejected (`inspect_dataset`, both CLIs).
+  A zero-byte file is treated as an empty stream and reported in the audit
+  (`<file>:empty_no_header`); a missing file as `<file>:missing`.
+- Rows without a usable timestamp are skipped and counted (`<file>:unparseable_rows`).
+- `manifest.interval_seconds` must be an integer 60..86400; anything else falls back to
+  900 s with a warning and `manifest:interval_seconds_invalid` in the audit.
+- Tariff revisions are kept: each query returns the latest price published by `as_of`.
+- `tests/ingestion/test_holdout_robustness.py` (65 fuzz cases from an independent review)
+  documents the three accepted policy differences as strict `xfail`s.

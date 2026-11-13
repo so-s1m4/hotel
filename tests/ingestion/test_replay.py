@@ -527,12 +527,14 @@ def test_loader_tolerates_bom_crlf_quotes_and_odd_timestamps(tmp_path):
     rows = repo.get_measurements("room_telemetry.csv", "2026-01-05T00:00:00Z",
                                  "2026-01-05T02:00:00Z", "2026-01-05T02:00:00Z", "R101")
     assert [r["timestamp_utc"] for r in rows] == [
-        "2026-01-05T00:00:00Z", "2026-01-05T00:15:01Z", "2026-01-05T00:30:00Z",
-        "2026-01-05T00:45:00Z"]  # 00:15:00.250 rounds UP: never visible early
+        "2026-01-05T00:00:00Z", "2026-01-05T00:15:00.25Z", "2026-01-05T00:30:00Z",
+        "2026-01-05T00:45:00Z"]  # source precision kept; lookup key rounds UP
+    assert repo.get_room_state("R101", "2026-01-05T00:15:00Z")["last_observed_utc"] == \
+        "2026-01-05T00:00:00Z"   # the .250 reading is not visible at :00
     assert rows[2]["note"] == "a, b" and rows[2]["temperature_c"] == 20.5
     assert repo.audit["room_telemetry.csv:unparseable_rows"] == 1
     st = repo.get_room_state("R101", "2026-01-05T00:20:00Z")
-    assert st["last_observed_utc"] == "2026-01-05T00:15:01Z" and st["housekeeping_state"] == "dirty"
+    assert st["last_observed_utc"] == "2026-01-05T00:15:00.25Z" and st["housekeeping_state"] == "dirty"
     bk = repo.get_booking("BK1", "2026-01-02T00:00:00Z")
     assert bk["created_utc"] == "2026-01-01T00:00:00Z" and bk["arrival_utc"] == "2026-01-05T14:00:00Z"
     assert len(list(repo.iter_events())) == 4 + 1

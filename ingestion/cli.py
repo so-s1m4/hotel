@@ -35,6 +35,13 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING,
                         format="%(levelname)s %(name)s: %(message)s")
 
+    # A header that lacks required columns is schema loss: refuse instead of
+    # exporting a stream that silently misses a whole source.
+    from .loader import check_headers
+    problems = check_headers(Path(args.data_dir)) if Path(args.data_dir).is_dir() else []
+    if problems:
+        print(f"Input error: unusable dataset schema: {'; '.join(problems)}", file=sys.stderr)
+        return 2
     started = time.time()
     repo = ReplayData(args.data_dir, use_llm=args.use_llm, include_ticks=not args.no_ticks)
     counts: collections.Counter[str] = collections.Counter()

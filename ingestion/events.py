@@ -158,10 +158,12 @@ def _guest_events(repo: "ReplayData") -> list[NormalizedEventV1]:
 
 # ------------------------------------------------------- deterministic streams
 def _raw_events(repo: "ReplayData") -> list[NormalizedEventV1]:
+    from .replay import public_event
     rooms = set(repo.ds.room_ids)
     out = []
     for ev in repo.ds.raw_events:
-        ts = ev["timestamp_utc"]
+        ts = ev["timestamp_utc"]                 # availability key (whole seconds)
+        occurred = ev.get("_source_ts") or ts    # original instant, precision kept
         asset = ev.get("asset_id")
         room = ev.get("room_id") or ev.get("to_room")
         if room is None and isinstance(asset, str):
@@ -170,13 +172,13 @@ def _raw_events(repo: "ReplayData") -> list[NormalizedEventV1]:
             elif asset.startswith("WM_") and asset[3:] in rooms:
                 room = asset[3:]
         out.append(NormalizedEventV1(
-            event_id=f"raw:{ev['event_id']}", timestamp_utc=ts, available_at_utc=ts,
+            event_id=f"raw:{ev['event_id']}", timestamp_utc=occurred, available_at_utc=ts,
             event_type="bms_alarm" if ev.get("type") == "bms_alarm" else "operational_event",
             source=SourceRefV1(file="events.jsonl", record_id=str(ev["event_id"]),
-                               timestamp_utc=ts),
+                               timestamp_utc=occurred),
             entities=EventEntitiesV1(room_id=room, booking_id=ev.get("booking_id"),
                                      asset_id=asset, resource_id=ev.get("resource_id")),
-            payload=dict(ev)))
+            payload=public_event(ev)))
     return out
 
 
