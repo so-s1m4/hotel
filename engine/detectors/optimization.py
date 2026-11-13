@@ -123,4 +123,5 @@ class OptimizationDetector:
                              f"weather_forecast.csv:issued={forecasts[0]['issued_utc']}:target={forecasts[0]['target_utc']}",
                              f"tariff.csv:{current['timestamp_utc']}:published={current['published_utc']}"],
                             "Observe temperature before arrival and stop/reassess if occupancy or booking facts change.",
-                            "Propose heating within safe bounds; no physical readiness or savings are claimed.", context={"room": state, "setpoint_c": 21}))
+                            "Propose heating within safe bounds; no physical readiness or savings are claimed.",
+                            context={"room": state, "setpoint_c": 21}, variant="room:" + room["id"]))
