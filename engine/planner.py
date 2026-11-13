@@ -403,8 +403,14 @@ class DecisionEngine:
             # Gateway room state already includes every fact queryable as of
             # now. Hydrate the calendar against that same knowledge boundary,
             # not just the prefix of equal-time normalized envelopes delivered.
-            begin = self._observed_query_utc if self._observed_hydrated and self._observed_query_utc else "1970-01-01T00:00:00Z"
-            raw_events.extend(self.repo.get_events(begin, now, now))
+            available_query = getattr(self.repo, "get_events_available_between", None)
+            if self._observed_hydrated and self._observed_query_utc and callable(available_query):
+                raw_events.extend(available_query(self._observed_query_utc, now, now))
+            else:
+                # The public protocol may bound by occurrence, not availability.
+                # A full as-of view is necessary to discover newly known old facts
+                # unless the gateway explicitly offers an availability index.
+                raw_events.extend(self.repo.get_events("1970-01-01T00:00:00Z", now, now))
             self._observed_hydrated = True
             self._observed_query_utc = now
         if event.event_type == "operational_event":
@@ -418,23 +424,44 @@ class DecisionEngine:
         checkins = {"checkin", "checkin_early", "checkin_after_wait", "stay_in_progress"}
         checkouts = {"checkout", "checkout_early"}
         activity_types = checkins | checkouts | starts.keys() | ends
-        for raw in sorted(raw_events, key=lambda r: (r.get("timestamp_utc", ""), r.get("event_id", ""))):
+        ready = {}
+        for raw in raw_events:
             stamp = raw.get("timestamp_utc")
             known = raw.get("available_at_utc") or stamp
             if not stamp or instant(stamp) > instant(now) or (known and instant(known) > instant(now)):
                 continue
             kind = raw.get("type")
-            if not isinstance(kind, str):
-                continue  # Unknown operational payload cannot establish observed work.
-            if kind not in activity_types:
+            if not isinstance(kind, str) or kind not in activity_types:
                 continue
             ident = raw.get("event_id") or stable_id("observed", stamp, kind, str(raw.get("room_id")), str(raw.get("resource_id")))
-            if ident in self._observed_event_ids:
+            if ident not in self._observed_event_ids:
+                ready.setdefault(ident, raw)
+        # A historical start and its already available completion can arrive in
+        # the same query. Seed completion/checkout watermarks first, so a
+        # finished activity or stay cannot transiently cancel a valid future
+        # proposal. Calendar work-end/room effects remain in the normal pass.
+        for raw in ready.values():
+            if raw["type"] in checkouts and raw.get("room_id"):
+                self._advance_occurrence(self.calendar.last_dirty_trigger, raw["room_id"], raw["timestamp_utc"])
+            if raw["type"] not in ends:
                 continue
+            resource, room = raw.get("resource_id"), raw.get("room_id")
+            resource = resource if resource in self.calendar.resource_roles else None
+            role = "robot" if raw["type"].startswith("robot_") else "cleaner"
+            if resource and self.calendar.resource_roles[resource] == "on_call_housekeeping" and role == "cleaner":
+                role = "on_call_housekeeping"
+            if resource or room:
+                self._advance_occurrence(self._observed_completions, (resource, room, role), raw["timestamp_utc"])
+        for ident, raw in sorted(ready.items(), key=lambda pair: (instant(pair[1]["timestamp_utc"]), str(pair[0]))):
+            stamp, kind = raw["timestamp_utc"], raw["type"]
             self._observed_event_ids.add(ident)
-            if kind in checkouts and raw.get("room_id"):
-                self._advance_occurrence(self.calendar.last_dirty_trigger, raw["room_id"], stamp)
             if kind in checkins and raw.get("room_id"):
+                checked_out = self.calendar.last_dirty_trigger.get(raw["room_id"])
+                # Newly disclosed old occupancy cannot invalidate work after a
+                # strictly later, already known checkout. Equal-time facts are
+                # left conservative: a timestamp alone proves no tie ordering.
+                if checked_out and instant(stamp) < instant(checked_out) <= instant(now):
+                    continue
                 for start, end, decision_id in self.calendar.room_jobs(raw["room_id"]):
                     if instant(end) > instant(now):
                         self._cancel_tree(decision_id, f"Observed guest occupancy {raw.get('event_id')} at {stamp}; room-entry proposal must be withdrawn")
@@ -622,8 +649,17 @@ class DecisionEngine:
             decision.guest_request_ids = sorted({request_id for c, d, scope in items for request_id in d.guest_request_ids})
             corrections = [d for c, d, _ in items if c.variant.split(":", 1)[0] in {"cancelled_plan", "withdraw_estimate"}]
             if candidate.context.get("accepted_plan") and corrections:
-                decision.reason = "Earlier simulated plan/estimate is superseded. " + decision.reason
-                decision.dependencies = list(dict.fromkeys(decision.dependencies + [dep for d in corrections for dep in d.dependencies]))
+                correction_ids = sorted({dep for d in corrections for dep in d.dependencies})
+                if correction_ids:
+                    # Distinct withdrawals remain distinct even when the new
+                    # readiness estimate is unchanged. Identical retries retain
+                    # the same text/identity and the ordinary dedup limits.
+                    decision.event_id = stable_id("decision", decision.event_id, "corrections", *correction_ids)
+                    prefix = "Earlier simulated plan/estimate is superseded (withdrawal records: " + ", ".join(correction_ids) + "). "
+                else:
+                    prefix = "Earlier simulated plan/estimate is superseded. "
+                decision.reason = prefix + decision.reason
+                decision.dependencies = list(dict.fromkeys(decision.dependencies + correction_ids))
                 candidate.reason = decision.reason
             if self.notifications.allow(candidate, scope, event.available_at_utc):
                 context = {**candidate.context, "building": self.building, "calendar": self.calendar}

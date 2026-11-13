@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 
 from common.contracts.schemas import NormalizedEventV1
 
-from .loader import Dataset, fmt_ts, norm_ts, parse_ts, shift_ts
+from .loader import Dataset, data_ts, fmt_ts, norm_ts, parse_ts, shift_ts
 
 ROSTER_PUBLICATION_LEAD_DAYS = 14  # observed: every 'scheduled' row is known start-14d
 CHECKIN_TYPES = {"checkin", "checkin_early", "checkin_after_wait", "stay_in_progress"}
@@ -48,7 +48,20 @@ class ReplayData:
             events = self.ds.raw_events
             by_room: dict[str, list[dict]] = {}
             by_booking: dict[str, list[dict]] = {}
+            available = []
             for ev in events:
+                # Loader timestamp_utc is already the conservative availability
+                # grid for a source occurrence (_source_ts retains precision).
+                # An explicit later publication must not be overwritten by it.
+                try:
+                    known = ev["timestamp_utc"]
+                    if "available_at_utc" in ev:
+                        known = max(known, data_ts(ev["available_at_utc"]))
+                    available.append((parse_ts(known), ev))
+                except (ValueError, TypeError, AttributeError, OverflowError):
+                    # Unknown/malformed explicit publication is not evidence of
+                    # immediate availability. Existing occurrence API is intact.
+                    pass
                 rooms = {ev.get("room_id"), ev.get("from_room"), ev.get("to_room")}
                 asset = ev.get("asset_id")
                 if isinstance(asset, str):
@@ -60,7 +73,10 @@ class ReplayData:
                         by_room.setdefault(room, []).append(ev)
                 if ev.get("booking_id"):
                     by_booking.setdefault(ev["booking_id"], []).append(ev)
+            available.sort(key=lambda item: (item[0], item[1]["event_id"]))
             self._idx["events"] = {
+                "available": [event for _, event in available],
+                "available_ts": [stamp for stamp, _ in available],
                 "all": events, "all_ts": [e["timestamp_utc"] for e in events],
                 "by_room": by_room,
                 "by_room_ts": {r: [e["timestamp_utc"] for e in v] for r, v in by_room.items()},
@@ -104,6 +120,28 @@ class ReplayData:
         lo, hi = bisect_left(ts, start), bisect_right(ts, end)
         return [public_event(ev) for ev in rows[lo:hi]
                 if event_type is None or ev.get("type") == event_type]
+
+    def get_events_available_between(self, start_utc: str, end_utc: str,
+                                     as_of_utc: str) -> list[dict[str, Any]]:
+        """Optional incremental raw-fact query by inclusive availability window.
+
+        Occurrence timestamps remain original source instants. Availability uses
+        the loader's conservative whole-second grid, raised further by explicit
+        publication timestamps. Precise query bounds are never rounded down at
+        the start. The cached index gives O(log n + returned facts) per query.
+        """
+        start = parse_ts(start_utc)
+        end = min(parse_ts(end_utc), parse_ts(as_of_utc))
+        if start > end:
+            return []
+        idx = self._event_index()
+        lo, hi = bisect_left(idx["available_ts"], start), bisect_right(idx["available_ts"], end)
+        result = []
+        for position in range(lo, hi):
+            out = deepcopy(public_event(idx["available"][position]))
+            out["available_at_utc"] = fmt_ts(idx["available_ts"][position])
+            result.append(out)
+        return result
 
     # -------------------------------------------------------------- rooms
     def _occupancy(self, room_id: str, as_of: str) -> tuple[str, str | None, list[str]]:

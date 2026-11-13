@@ -32,6 +32,9 @@ class AvailabilityGateway(FakeGateway):
                 and (not room_id or row.get('room_id')==room_id)
                 and (not event_type or row.get('type')==event_type)]
 
+    def get_events_available_between(self,start_utc,end_utc,as_of_utc):
+        return self.get_events(start_utc,end_utc,as_of_utc)
+
     def get_measurements(self,*args,**kwargs):
         if self.fail_measurements:
             self.fail_measurements=False
