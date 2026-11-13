@@ -30,11 +30,12 @@ from zoneinfo import ZoneInfo
 from common.contracts.schemas import ExtractionMetaV1, GuestIntentV1, SCHEMA_VERSION
 from ingestion.guest_generation import generation_schema, response_format
 from ingestion.llm_transport import open_llm as _open_llm, origin
+from ingestion.request_polarity import declined_intents
 
 __all__ = ["parse_request", "parse_request_full", "parse_requests_batch"]
 
 LOGGER = logging.getLogger(__name__)
-PARSER_VERSION = "1.2.0"  # optional extraction-only generation; host retains date authority
+PARSER_VERSION = "1.2.1"  # explicit refusals and authenticated endpoint routing guards
 PROMPT_VERSION = "guest-semantics-v2"
 MAX_RESPONSE_BYTES = 2_000_000
 MAX_INTENTS = 32
@@ -145,6 +146,8 @@ def _config() -> dict[str, Any]:
         if generic_base:
             base = generic_base
     origin(base)  # Reject invalid endpoints even when cache or credentials exist.
+    if "?" in base or "#" in base:
+        raise ValueError("LLM base URL must not contain a query or fragment")
     # A model is deliberately explicit: provider model catalogues change.
     try:
         timeout = min(60.0, max(0.1, float(os.environ.get("LLM_TIMEOUT_SECONDS", "15"))))
@@ -591,6 +594,7 @@ def _validated(raw: list[dict], record: Mapping[str, Any], safe: Mapping[str, An
         uncertain.add("language")
     if _INJECTION.search(text):
         uncertain.add("untrusted_instructions")
+    declined = declined_intents(text, language)
     results: list[dict] = []
     for raw_item in raw:
         # Reject arbitrary fields/invalid enum values before processing semantics.
@@ -639,6 +643,13 @@ def _validated(raw: list[dict], record: Mapping[str, Any], safe: Mapping[str, An
             item.requested_time_utc = None
         if item.intent == "unknown":
             item_uncertain.add("intent")
+        if item.intent in declined:
+            # A model's positive classification cannot override an explicit
+            # source refusal, including when it quoted only the clock digits.
+            item.requested_time_utc = None
+            item_uncertain.add("semantic_negation")
+            if item.intent in _TIMED_INTENTS:
+                item_uncertain.add("requested_time_utc")
         if language not in _LANGUAGES:
             item_uncertain.add("language")
         if "untrusted_instructions" in uncertain:

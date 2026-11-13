@@ -226,7 +226,7 @@ def test_oversized_http_body_stops_at_bounded_read_without_cache(parser,monkeypa
 def test_transport_error_logging_does_not_include_url_credentials_body_or_guest_text(parser,monkeypatch,tmp_path,caplog):
     secret='SYNTHETIC-URL-CREDENTIAL'
     sensitive_guest='SYNTHETIC-GUEST-PRIVATE-TEXT'
-    monkeypatch.setenv('LLM_BASE_URL','http://127.0.0.1:11434/v1?token='+secret)
+    monkeypatch.setenv('LLM_BASE_URL','http://127.0.0.1:11434/v1/'+secret)
     record={**RECORD,'text':sensitive_guest}
     calls=[]
     def fail(request,timeout):

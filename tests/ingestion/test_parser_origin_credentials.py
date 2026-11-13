@@ -30,3 +30,11 @@ def test_endpoint_userinfo_is_rejected_before_transport(parser, record, context,
     monkeypatch.setenv('LLM_BASE_URL', 'http://user:synthetic-secret@localhost:11434/v1')
     _, meta = parser.parse_request_full(record, context)
     assert not calls and meta.method == 'fallback' and meta.needs_review
+
+
+@pytest.mark.parametrize('suffix', ['?key=synthetic', '#chat', '?', '#'])
+def test_base_url_delimiters_are_rejected_before_cache_or_transport(parser, record, context, llm, monkeypatch, suffix):
+    calls = llm({'intents': [intent()]})
+    monkeypatch.setenv('LLM_BASE_URL', 'http://localhost:11434/v1' + suffix)
+    _, meta = parser.parse_request_full(record, context)
+    assert not calls and meta.method == 'fallback' and meta.needs_review

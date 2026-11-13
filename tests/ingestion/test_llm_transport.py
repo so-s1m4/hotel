@@ -1,5 +1,6 @@
 """No real sockets: origin isolation and private no-redirect opener proofs."""
 from io import BytesIO
+import ssl
 from unittest.mock import Mock
 from urllib import request as urllib_request
 from urllib.error import HTTPError
@@ -109,4 +110,5 @@ def test_private_opener_keeps_default_tls_handler_and_has_one_no_redirect_handle
     https=[handler for handler in opener.handlers if isinstance(handler,urllib_request.HTTPSHandler)]
     assert len(redirects)==1 and isinstance(redirects[0],transport.NoRedirectHandler)
     assert len(https)==1
-    assert https[0]._context is None  # urllib creates the default verified context
+    context = https[0]._context
+    assert context is None or (context.verify_mode == ssl.CERT_REQUIRED and context.check_hostname)
