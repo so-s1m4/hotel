@@ -351,8 +351,13 @@ def run_benchmark(config: BenchmarkConfig, *, parser_module: Any = None) -> dict
                "cache_lookups": 0, "cache_hits": 0, "live_llm": 0, "cache_llm": 0,
                "source_label": 0, "fallback": 0, "error": 0, "total_seconds": 0.0,
                "raw_predictions_count": 0, "raw_gold_pass_count": None, "host_gold_pass_count": None}
-    report = {"schema_version": "1.0", "mode": "execute" if config.execute else "plan",
-              "manifest": manifest, "results": [], "summary": summary}
+    # Until the whole cohort finishes, zero would falsely imply no work or cost.
+    unknown_summary = {key: value if key == "selected_count" else None
+                       for key, value in summary.items()}
+    report = {"schema_version": "1.1", "mode": "execute" if config.execute else "plan",
+              "status": "running" if config.execute else "planned",
+              "manifest": manifest, "results": [],
+              "summary": unknown_summary if config.execute else summary}
     api_key = os.environ.get("LLM_API_KEY", "").strip()
     if config.execute and not api_key:
         raise ValueError("Execution requires explicit LLM_API_KEY configuration")
@@ -362,7 +367,9 @@ def run_benchmark(config: BenchmarkConfig, *, parser_module: Any = None) -> dict
         out.parent.mkdir(parents=True, exist_ok=True)
         # Exclusive creation rejects existing files, symlinks and hardlink aliases
         # before cache mutation or model calls. Keep the same open handle to write.
-        with out.open("x", encoding="utf-8") as handle:
+        handle = out.open("x", encoding="utf-8")
+        original_error = None
+        try:
             json.dump(_scrub(report, secrets), handle, ensure_ascii=False, indent=2)
             handle.flush()
             if config.execute:
@@ -388,6 +395,8 @@ def run_benchmark(config: BenchmarkConfig, *, parser_module: Any = None) -> dict
                 if predictions:
                     summary["raw_gold_pass_count"] = sum(x["checks"]["raw"]["passed"] for x in predictions)
                     summary["host_gold_pass_count"] = sum(x["path"] == "live_llm" and x["checks"]["normalized"]["passed"] for x in predictions)
+                report["summary"] = summary
+                report["status"] = "complete"
             sanitized = _scrub(report, secrets)
             for original, result in zip(report["results"], sanitized["results"]):
                 result["raw_response_redacted"] = result["raw_response"] != original["raw_response"]
@@ -397,7 +406,32 @@ def run_benchmark(config: BenchmarkConfig, *, parser_module: Any = None) -> dict
             json.dump(report, handle, ensure_ascii=False, indent=2)
             handle.write("\n")
             handle.truncate()
+            handle.flush()
             return report
+        except BaseException as exc:
+            original_error = exc
+            report["status"] = "failed" if isinstance(exc, Exception) else "interrupted"
+            report["error_type"] = type(exc).__name__
+            report["summary"] = unknown_summary
+            report["results"] = []
+            # Reporting must never replace the original interrupt/failure. The
+            # initial running report already records unknown measurements if
+            # this best-effort update cannot be written.
+            try:
+                handle.seek(0)
+                json.dump(_scrub(report, secrets), handle, ensure_ascii=False, indent=2)
+                handle.write("\n")
+                handle.truncate()
+                handle.flush()
+            except BaseException:
+                pass
+            raise
+        finally:
+            try:
+                handle.close()
+            except BaseException:
+                if original_error is None:
+                    raise
     finally:
         _RUN_LOCK.release()
 

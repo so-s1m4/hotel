@@ -60,8 +60,9 @@ python -m scripts.benchmark_guest_parser "${benchmark_args[@]}" \
   --out outputs/parser-benchmark/plan-workers1.json
 ```
 
-Plan mode validates input and configuration and writes a report with zero
-completed cases and zero calls. It does not create the managed cache. Inspect the
+Plan mode validates input and configuration and writes a `status="planned"`
+report with zero completed cases and zero calls. Those zeros describe an actual
+zero-call plan. It does not create the managed cache. Inspect the
 selected case IDs, count, endpoint and pinned hashes before execution. Report
 paths must be new; existing files, including symlink/hardlink aliases, are rejected
 before calls. Reports cannot be placed inside the managed candidate/run cache.
@@ -72,7 +73,17 @@ Keep the same server configuration throughout a paired cold/cache-warm run.
 Start with one client worker. A fresh run requires an absent or empty cache
 directory for that candidate/run ID.
 
+`--execute` permits transport but does not clear inherited parser overrides.
+For an intended live-model comparison, clear `GUEST_PARSER_OFFLINE` first; a case
+with `context.use_llm=false` also remains offline. The included 15-case fixture
+does not set that override. After execution, check the report status,
+`manifest.transport_kind`, transport/raw-prediction counts and individual paths.
+A complete execution containing only `source_label` paths and zero transport
+calls is an offline result, not a live-model measurement.
+
 ```bash
+unset GUEST_PARSER_OFFLINE
+
 python -m scripts.benchmark_guest_parser "${benchmark_args[@]}" \
   --workers 1 --run-id workers1-01 --execute \
   --out outputs/parser-benchmark/cold-workers1.json
@@ -106,6 +117,33 @@ occurs before parsing. The production public batch helper is also sequential,
 so this harness creates its own explicit worker pool.
 
 ## Read the results
+
+Report schema `1.1` has a top-level `status`. For numerical execution measurements,
+require both `mode="execute"` and `status="complete"`; `mode` alone only records
+the requested operation. Completion does not imply that every case passed or that
+any fresh model reply was received.
+
+| Status | Interpretation |
+|---|---|
+| `planned` | Input/configuration plan only. Numeric execution counters and elapsed time are legitimately zero; gold pass totals remain null. |
+| `running` | Execution has not produced a complete report. Measured summary fields are null; work may already have occurred. |
+| `complete` | The complete selected cohort was retained and summarized. Inspect its transport, cache, fallback and error paths before drawing conclusions. |
+| `interrupted` | Execution stopped by interruption. Measured summary fields are null and `error_type` records only the exception class. |
+| `failed` | Execution or reporting failed. Measured summary fields are null and `error_type` records only the exception class. |
+
+For `running`, `interrupted` and `failed`, `summary.selected_count` remains known,
+but completed/call/cache/path counts, elapsed time, prediction counts and gold
+pass totals are all null. Treat their execution cost as unknown, never as zero.
+An empty `results` list means no complete cohort was retained, not that no calls
+were attempted. The initial execute report already uses these unknown values.
+
+Writing an interrupted/failed report is best effort. The original exception is
+re-raised; reporting failure must not replace it. An abrupt process termination
+or failed report write may leave a `running` or unreadable artifact. That is not
+a completed measurement. This harness does not retain partial-case accounting or
+resume an interrupted report. A later invocation, including one that explicitly
+reuses matching cache entries with `--warm`, is a separate measurement and cannot
+reconstruct the missing counts.
 
 Each case records the original raw-response SHA-256, retained raw reply, separate
 host-normalized intents/extraction metadata, raw and host checks, execution path,

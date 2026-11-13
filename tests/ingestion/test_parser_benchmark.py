@@ -109,11 +109,16 @@ def test_cli_defaults_to_plan_without_parser_cache_or_transport(benchmark, parse
 
     assert result == 0
     report = json.loads(out.read_text(encoding="utf-8"))
+    assert report["schema_version"] == "1.1" and report["status"] == "planned"
     assert report["mode"] == "plan" and report["results"] == []
     assert report["manifest"]["selected_count"] == 2
+    assert report["summary"]["selected_count"] == 2
     assert report["summary"]["completed_count"] == 0
-    for name in ("transport_calls", "cache_lookups", "cache_hits", "live_llm", "cache_llm", "source_label", "fallback"):
+    for name in ("transport_calls", "cache_lookups", "cache_hits", "live_llm", "cache_llm",
+                 "source_label", "fallback", "error", "total_seconds", "raw_predictions_count"):
         assert report["summary"][name] == 0
+    assert report["summary"]["raw_gold_pass_count"] is None
+    assert report["summary"]["host_gold_pass_count"] is None
     for guard in guards.values():
         guard.assert_not_called()
     assert input_path.read_bytes() == original
@@ -148,6 +153,7 @@ def test_limit_precedes_calls_and_parallel_completion_keeps_case_attribution(ben
 
     report = benchmark.run_benchmark(config, parser_module=parser)
 
+    assert report["schema_version"] == "1.1" and report["status"] == "complete"
     selected = cases[:3]
     selected_request_ids = [case["record"]["request_id"] for case in selected]
     assert parse_mock.call_count == transport_mock.call_count == 3
@@ -165,9 +171,70 @@ def test_limit_precedes_calls_and_parallel_completion_keeps_case_attribution(ben
         assert result["checks"]["raw"]["passed"] is True
     assert report["summary"]["selected_count"] == report["summary"]["completed_count"] == 3
     assert report["summary"]["transport_calls"] == report["summary"]["live_llm"] == 3
+    assert all(type(value) in (int, float) for value in report["summary"].values())
     assert parser._call_llm is transport_mock and parser._read_cache is original_read_cache
     assert parser.parse_request_full is parse_mock
     assert input_path.read_bytes() == input_before and Path(parser.__file__).read_bytes() == source_before
+
+
+@pytest.mark.parametrize("fail_interrupted_save", [False, True], ids=["interrupt", "interrupt-save-failure"])
+def test_interrupt_retains_unknown_measurements_and_restores_runner(benchmark, parser, cases, tmp_path, monkeypatch, fail_interrupted_save):
+    input_path = write_cases(tmp_path / "cases.jsonl", cases[:1])
+    input_before = input_path.read_bytes()
+    config = config_for(benchmark, tmp_path, input_path, limit=1, workers=1, execute=True)
+    config_before = copy.deepcopy(config)
+    environment_before = dict(os.environ)
+    original_parse = parser.parse_request_full
+    sentinel = KeyboardInterrupt("synthetic interruption details must remain private")
+    initial_reports, failed_saves = [], []
+    original_dump = benchmark.json.dump
+
+    def save_report(value, *args, **kwargs):
+        if fail_interrupted_save and value.get("status") == "interrupted":
+            failed_saves.append(True)
+            raise OSError("synthetic report save failure")
+        return original_dump(value, *args, **kwargs)
+
+    def transport(messages, parser_config):
+        initial_reports.append(json.loads(Path(config.out).read_text(encoding="utf-8")))
+        raise sentinel
+
+    transport_mock = Mock(side_effect=transport)
+    cache_mock = Mock(side_effect=parser._read_cache)
+    monkeypatch.setattr(benchmark.json, "dump", save_report)
+    monkeypatch.setattr(parser, "_call_llm", transport_mock)
+    monkeypatch.setattr(parser, "_read_cache", cache_mock)
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        benchmark.run_benchmark(config, parser_module=parser)
+
+    assert caught.value is sentinel
+    assert transport_mock.call_count == cache_mock.call_count == len(initial_reports) == 1
+    assert parser._call_llm is transport_mock and parser._read_cache is cache_mock
+    assert parser.parse_request_full is original_parse
+    assert dict(os.environ) == environment_before and config == config_before
+    assert input_path.read_bytes() == input_before
+    retained = json.loads(Path(config.out).read_text(encoding="utf-8"))
+
+    # A subsequent public run proves that the process-wide run lock was released.
+    plan = benchmark.run_benchmark(replace(config, execute=False, run_id="after-interrupt",
+                                           out=tmp_path / "after-interrupt.json"), parser_module=parser)
+    assert plan["mode"] == "plan" and plan["summary"]["transport_calls"] == 0
+    assert transport_mock.call_count == cache_mock.call_count == 1
+
+    for report, status in ((initial_reports[0], "running"),
+                           (retained, "running" if fail_interrupted_save else "interrupted")):
+        assert report.get("status") == status, json.dumps(report["summary"], sort_keys=True)
+        assert report["schema_version"] == "1.1" and report["results"] == []
+        assert report["summary"]["selected_count"] == 1
+        for name, value in report["summary"].items():
+            if name != "selected_count":
+                assert value is None, (name, value)
+        assert str(sentinel) not in json.dumps(report)
+    if fail_interrupted_save:
+        assert failed_saves == [True]
+    else:
+        assert retained["error_type"] == "KeyboardInterrupt"
 
 
 def test_cache_and_fallback_accounting_retains_raw_and_validated_outputs(benchmark, parser, cases, tmp_path, monkeypatch):
