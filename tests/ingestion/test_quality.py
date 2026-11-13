@@ -25,6 +25,7 @@ def test_quickstart_quality_report(tmp_path):
     top = water["largest_decreases"][0]
     assert top["asset_id"] == "WM_R403" and top["metering_work_orders"] == ["WO00004"]
     assert water["large_unexplained_decreases"] == []
+    assert water["decreases_matched_to_metering_work_order"] == 1   # one per work order
     assert water["small_unexplained_decreases"] > 300      # meter jitter, not resets
     assert "never use at decision time" in report["note"]
     out = tmp_path / "q.json"
@@ -39,4 +40,35 @@ def test_dev_quality_report_is_deterministic():
     assert first == second
     assert first["room_telemetry"]["duplicates_dropped"] == 40
     assert first["room_telemetry"]["floor_wide_outages"]["count"] == 14
-    assert first["water"]["room_water.csv"]["decreases_explained_by_metering_work_order"] == 25
+    assert first["water"]["room_water.csv"]["decreases_matched_to_metering_work_order"] == 2
+
+
+def test_quality_counts_declared_rooms_and_one_match_per_work_order(tmp_path):
+    d = tmp_path / "q"
+    d.mkdir()
+    (d / "manifest.json").write_text(json.dumps({
+        "start_utc": "2026-01-05T00:00:00Z", "end_utc": "2026-01-05T01:00:00Z",
+        "interval_seconds": 900}))
+    (d / "building.json").write_text(json.dumps(
+        {"building": {"rooms": [{"id": "R101"}, {"id": "R102"}]}}))
+    (d / "room_telemetry.csv").write_text(
+        "timestamp_utc,room_id,temperature_c,humidity_pct,co2_ppm\n" + "".join(
+            f"2026-01-05T00:{m:02d}:00Z,R101,20.0,40,500\n" for m in (0, 15, 30, 45)))
+    (d / "room_water.csv").write_text(
+        "timestamp_utc,room_id,meter_total_l\n" + "".join(
+            f"2026-01-05T00:{m:02d}:00Z,R101,{v}\n" for m, v in ((0, 100), (15, 99), (30, 10), (45, 9))))
+    (d / "water_main.csv").write_text("timestamp_utc,meter_total_l\n")
+    (d / "work_orders.csv").write_text(
+        "work_order_id,created_utc,asset_id,type,status,scheduled_utc,completed_utc,assigned_to,summary\n"
+        "WO1,2026-01-04T00:00:00Z,WM_R101,metering,completed,2026-01-05T00:30:00Z,"
+        "2026-01-05T00:30:00Z,EXT,exchange\n")
+    report = build_report(d)
+    tel = report["room_telemetry"]
+    assert tel["expected_rows"] == 8 and tel["missing_rows"] == 4
+    assert tel["rooms_without_any_rows"] == ["R102"]
+    water = report["water"]["room_water.csv"]
+    assert water["counter_decreases"] == 3
+    assert water["decreases_matched_to_metering_work_order"] == 1
+    assert water["largest_decreases"][0]["drop_l"] == 89.0
+    assert water["largest_decreases"][0]["metering_work_orders"] == ["WO1"]
+    assert water["small_unexplained_decreases"] == 2

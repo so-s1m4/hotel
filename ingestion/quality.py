@@ -122,10 +122,15 @@ def telemetry_quality(ds: Dataset) -> dict[str, Any]:
     floor_outages = sorted(({"from_utc": k[0], "floor": int(k[1]) if k[1].isdigit() else k[1],
                              "rooms_affected": len(v)} for k, v in starts.items() if len(v) >= 5),
                            key=lambda o: o["from_utc"])
-    expected = len(grid) * len(series.groups)
+    declared = ds.room_ids or sorted(k[0] for k in series.groups)
+    silent_rooms = sorted(set(declared) - {k[0] for k in series.groups})
+    undeclared_rooms = sorted({k[0] for k in series.groups} - set(declared)) if ds.room_ids else []
+    expected = len(grid) * len(declared)
     return {
         "rows_after_dedup": rows_total, "expected_rows": expected,
         "missing_rows": max(expected - rows_total, 0),
+        "declared_rooms": len(declared), "rooms_without_any_rows": silent_rooms,
+        "rooms_not_in_building_json": undeclared_rooms,
         "duplicates_dropped": series.duplicates_dropped,
         "missing_cells_by_column": dict(missing_cells.most_common()),
         "gap_count": len(gaps), "missing_samples_by_floor": dict(sorted(by_floor.items())),
@@ -158,14 +163,19 @@ def water_quality(ds: Dataset) -> dict[str, Any]:
                                  and w.get("completed_utc")
                                  and abs((parse_ts(w["completed_utc"]) - parse_ts(row["timestamp_utc"]))
                                          .total_seconds()) <= 6 * 3600]
-                    if drop < 5 and not explained:
-                        negative_small += 1  # jitter-sized decrease, not a counter restart
-                        small_sizes[min(int(drop), 4)] += 1
                     resets.append({"asset_id": asset, "timestamp_utc": row["timestamp_utc"],
                                    "before_l": previous[1], "after_l": value, "drop_l": drop,
                                    "metering_work_orders": explained})
                 previous = (row["timestamp_utc"], value)
         resets.sort(key=lambda r: -r["drop_l"])
+        claimed: set[str] = set()
+        for reset in resets:  # largest first: each work order explains ONE decrease
+            keep = [w for w in reset["metering_work_orders"] if w not in claimed]
+            claimed.update(keep[:1])
+            reset["metering_work_orders"] = keep[:1]
+        negative_small = sum(1 for r in resets if r["drop_l"] < 5 and not r["metering_work_orders"])
+        small_sizes = collections.Counter(min(int(r["drop_l"]), 4) for r in resets
+                                          if r["drop_l"] < 5 and not r["metering_work_orders"])
         out[filename] = {
             "missing_readings": missing, "duplicates_dropped": series.duplicates_dropped,
             "counter_decreases": len(resets), "small_unexplained_decreases": negative_small,
@@ -173,7 +183,7 @@ def water_quality(ds: Dataset) -> dict[str, Any]:
                                                 for k, v in sorted(small_sizes.items())},
             "large_unexplained_decreases": [r for r in resets if r["drop_l"] >= 5
                                             and not r["metering_work_orders"]][:TOP],
-            "decreases_explained_by_metering_work_order":
+            "decreases_matched_to_metering_work_order":
                 sum(1 for r in resets if r["metering_work_orders"]),
             "largest_decreases": resets[:TOP],
         }

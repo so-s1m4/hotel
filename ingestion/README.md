@@ -101,9 +101,9 @@ data (synthetic, no real-world claims):
 | frozen temperature runs (>= 3 h identical) | 1 | 6 |
 | implausible sentinel readings (e.g. 85.0 / -40.0 degC, CO2 0 / 10000 ppm) | 1 | 13 |
 | room water-meter counter decreases | 338 | 8,116 |
-| ... explained by a metering work order (true meter exchange) | 12 | 25 |
-| ... small (< 4 L) unexplained decreases = reading jitter | 326 | 8,091 |
+| ... largest drop near a metering work order's completion (one per order, within 6 h; proximity match, not a confirmed exchange record) | 1 | 2 |
+| ... small (< 5 L) other decreases = reading jitter | 337 | 8,114 |
 
 Two things follow for consumers: a negative water delta is almost always jitter, not a
-meter exchange (only the multi-thousand-litre drops are exchanges), and a whole floor
+meter exchange (only the multi-thousand-litre drops coincide with metering work orders), and a whole floor
 going blank at once points at the gateway, not at forty individual sensors.

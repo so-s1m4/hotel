@@ -33,7 +33,7 @@ from common.contracts.schemas import ExtractionMetaV1, GuestIntentV1, SCHEMA_VER
 __all__ = ["parse_request", "parse_request_full", "parse_requests_batch"]
 
 LOGGER = logging.getLogger(__name__)
-PARSER_VERSION = "1.0.1"
+PARSER_VERSION = "1.0.3"  # bump invalidates cached extractions (1.0.3: zone-abbreviation fix)
 PROMPT_VERSION = "guest-semantics-v1"
 MAX_RESPONSE_BYTES = 2_000_000
 MAX_INTENTS = 32
