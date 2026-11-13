@@ -25,6 +25,23 @@ from engine.safety import SafetyViolation, asset_ids, validate_safety
 _MISSING = object()
 
 
+class _ShallowUndo:
+    """Original container plus a shallow copy of its contents."""
+    __slots__ = ("container", "contents")
+
+    def __init__(self, container, contents):
+        self.container, self.contents = container, contents
+
+    def restore(self):
+        if isinstance(self.container, list):
+            self.container[:] = self.contents
+        elif isinstance(self.container, (dict, set)):
+            self.container.clear()
+            self.container.update(self.contents)
+        else:
+            self.container = self.contents
+
+
 class _UndoDict(dict):
     """Record touched keys, never copy a growing history for each input event."""
     def __init__(self, values=(), *, mutable_values=False):
@@ -42,8 +59,9 @@ class _UndoDict(dict):
                 self.undo[key] = value
             elif self.mutable_values == "shallow":
                 # Containers of live objects (e.g. calendars): copy the container,
-                # never the objects, so rollback preserves their identity.
-                self.undo[key] = copy(value)
+                # never the objects, so rollback preserves their identity. The
+                # original container is kept too and refilled in place.
+                self.undo[key] = _ShallowUndo(value, copy(value))
             else:
                 self.undo[key] = deepcopy(value)
 
@@ -84,6 +102,9 @@ class _UndoDict(dict):
             for key, old in changes.items():
                 if old is _MISSING:
                     dict.pop(self, key, None)
+                elif isinstance(old, _ShallowUndo):
+                    old.restore()
+                    dict.__setitem__(self, key, old.container)
                 else:
                     dict.__setitem__(self, key, old)
 

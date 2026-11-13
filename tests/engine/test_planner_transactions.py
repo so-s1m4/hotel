@@ -176,6 +176,7 @@ def test_rollback_restores_submitted_calendars_without_copying_calendars():
     if submitted is None:
         pytest.skip('executor without _submitted_calendars')
     before = {key: list(value) for key, value in submitted.items()}
+    containers = {key: value for key, value in submitted.items()}
     assert all(c is engine.calendar for value in submitted.values() for c in value)
     repo.states['R101'].append(state(t='2026-01-06T10:00:00Z', cleaning='clean'))
     repo.fail_method = 'room_water.csv'
@@ -185,3 +186,5 @@ def test_rollback_restores_submitted_calendars_without_copying_calendars():
     assert {key: list(value) for key, value in after.items()} == before
     # identity of the live calendar survives the rollback (no deep copy)
     assert all(c is engine.calendar for value in after.values() for c in value)
+    # and the original list objects are refilled in place, not replaced
+    assert all(after[key] is containers[key] for key in containers)
