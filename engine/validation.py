@@ -16,7 +16,7 @@ import sys
 
 from common.contracts.schemas import DecisionRecordV2
 
-VALIDATOR_VERSION = "1.0"
+VALIDATOR_VERSION = "1.1"
 START_ROLES = {"cleaning_started": "cleaner", "robot_floor_cleaning_started": "robot"}
 END_ROLES = {"cleaning_completed": "cleaner", "robot_floor_cleaning_completed": "robot"}
 ALLOWED_STATUSES = {"simulated", "simulated_message_proposed", "pending_human_approval", "pending_guest_consent"}
@@ -43,9 +43,12 @@ class _Issues:
     def __init__(self):
         self.counts = Counter()
         self.examples = []
+        self.invalid_decisions = set()
 
     def add(self, code, *, decision_id=None, **details):
         self.counts[code] += 1
+        if isinstance(decision_id, str):
+            self.invalid_decisions.add(decision_id)
         if len(self.examples) < 2000:
             self.examples.append({"code": code, **({"decision_id": decision_id} if decision_id else {}), **details})
 
@@ -89,11 +92,14 @@ def _match_end(start, end, resources):
         return False
     performer = end.get("resource_id")
     known = performer if performer in resources else None
-    if known is not None and start["resource"] is not None and start["resource"] != known:
-        return False
-    if known is None and room is None:
-        return False
-    return True
+    if known is not None:
+        if start["resource"] is not None:
+            return start["resource"] == known
+        # A known worker's roomless completion identifies that worker's own
+        # work, not every unassigned job of the same role elsewhere. Resolving
+        # uncertain-performer work requires an explicit matching room and role.
+        return room is not None and _role(resources[known]) == start["role"]
+    return room is not None
 
 
 def _related(activity, job, roles):
@@ -391,6 +397,12 @@ def validate_outputs(data_dir: str | Path, decisions_path: str | Path, audit_pat
         when = _time(record.timestamp_utc)
         if when < _time(decisions[target].timestamp_utc):
             issues.add("cancellation_before_proposal", decision_id=identifier, cancelled_decision_id=target)
+            continue
+        # A proposed cancellation awaiting approval/consent does not release
+        # capacity. Nor may a malformed audit hide overlaps in otherwise real
+        # reservations merely by supplying a cancellation marker.
+        if (audit.get("status") != "simulated" or record.requires_human_approval
+                or record.requires_guest_consent or identifier in issues.invalid_decisions):
             continue
         cancellations[target] = min(cancellations.get(target, when), when)
     jobs = []

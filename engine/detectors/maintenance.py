@@ -12,7 +12,7 @@ class MaintenanceDetector:
         self.healthy = defaultdict(int)
         self.last_scan = None
 
-    def detect(self, event, repo, building, calendar, work_orders):
+    def detect(self, event, repo, building, calendar, work_orders, *, pending_plans=None):
         result = DetectionResult()
         if event.event_type != "clock_tick":
             return result
@@ -100,6 +100,16 @@ class MaintenanceDetector:
                 (" Existing service plan is overdue without observed completion; verify it before placing a duplicate contractor call." if overdue else
                  " Existing known service plan; confirm it rather than duplicate a contractor call."),
                 variant="overdue_order" if overdue else "known_order", priority="high" if overdue else "medium"))
+            return result
+        pending_ids = {plan["decision_id"] for plan in (pending_plans or [])
+                       if plan.get("key") == "plant:AHU1"
+                       and plan.get("asset_id") == "AHU1"
+                       and plan.get("action") == "dispatch_technician"}
+        if pending_ids and any(ident in pending_ids and instant(end) > instant(now)
+                               for rows in calendar.tentative_reservations.values()
+                               for _, end, ident in rows):
+            # The episode already has a live proposal awaiting approval. Its own
+            # capacity hold is not evidence that external service is required.
             return result
         slots = repo.get_staff_slots(now, until, now, role="technician")
         choice = calendar.first_slot(slots, now, until, self.config.technician_minutes, role="technician")

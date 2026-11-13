@@ -22,7 +22,7 @@ def instant(value: str) -> datetime:
 
 
 def utc(value: datetime) -> str:
-    return value.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    return value.astimezone(timezone.utc).isoformat(timespec="auto").replace("+00:00", "Z")
 
 
 def ago(now: str, minutes: int) -> str:

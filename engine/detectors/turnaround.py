@@ -19,10 +19,11 @@ class TurnaroundDetector:
         result = DetectionResult()
         now = event.available_at_utc
         raw_type = event.payload.get("type")
-        labels = {i.get("intent") for i in event.payload.get("intents", [])}
-        wanted = event.payload.get("request_type") in {"early_checkin", "waiting_for_room"}
-        if event.event_type == "guest_request" and (wanted or labels & {"early_checkin", "waiting_for_room"}):
-            # Do not trust an LLM disagreement over the original source label.
+        if event.event_type == "guest_request":
+            # Source labels decide scope; arbitrary non-guest payloads are not
+            # guest extraction envelopes and need not have iterable intents.
+            source_type = event.payload.get("request_type")
+            wanted = isinstance(source_type, str) and source_type in {"early_checkin", "waiting_for_room"}
             if wanted:
                 self.pending.setdefault(event.event_id, event)
         if raw_type == "arrival_waiting_room":
@@ -31,17 +32,24 @@ class TurnaroundDetector:
             return result
         planning = deepcopy(calendar)
         planned_rooms = set()
+        known_rooms = {r["id"] for r in building["building"]["rooms"]}
         for request_id, request in list(self.pending.items()):
             key = "turnaround:" + request_id
             room = self.target_rooms.get(request_id, request.entities.room_id)
-            if not room or room == "BUILDING":
-                continue
             source_refs = [f"{request.source.file}:{request.source.record_id}"]
             request_time = instant(request.available_at_utc)
-            if instant(now) - request_time > timedelta(hours=48):
+            if instant(now) - request_time >= timedelta(hours=48):
                 self._retire(request_id, key, calendar, planning,
                     f"Request {request.source.record_id} is older than the 48-hour planning horizon as of {now}", source_refs)
                 result.resolved.add(key)
+                if room not in known_rooms:
+                    result.candidates.append(Candidate(key, "BUILDING", "room_turnaround", "notify_guest",
+                        "The 48-hour arrival planning horizon expired without a verified room identity; request closed for manual booking/room clarification.",
+                        source_refs, "Confirm the booking and room with operations before opening a new readiness request.",
+                        "Propose manual identity review; no delivery, room entry or readiness is assumed.",
+                        request_ids=[request.entities.guest_request_id] if request.entities.guest_request_id else [],
+                        context={"notification_scope":"booking:"+request.entities.booking_id} if request.entities.booking_id else {},
+                        variant="identity_expired"))
                 continue
             booking_id = request.entities.booking_id
             booking = repo.get_booking(booking_id, now) if booking_id else None
@@ -60,7 +68,16 @@ class TurnaroundDetector:
                     result.resolved.add(key)
                     continue
                 target = booking.get("observed_room_id") or booking.get("room_id")
-                if future_lifecycle or target and target != room:
+                if room not in known_rooms and not future_lifecycle and target in known_rooms:
+                    room = target
+                    assignment_refs = booking_refs
+                    self.target_rooms[request_id] = room
+                    self.target_evidence[request_id] = assignment_refs
+                if room not in known_rooms:
+                    # The booking exists but its assignment is not yet causal or
+                    # valid; leave identity handling below to request review.
+                    target = None
+                if room in known_rooms and (future_lifecycle or target and target != room):
                     moves = repo.get_events(booking["created_utc"], now, now, event_type="room_reassigned")
                     moves = [move for move in moves if move.get("booking_id") == booking_id and move.get("timestamp_utc")
                              and instant(move["timestamp_utc"]) <= instant(now)
@@ -85,6 +102,13 @@ class TurnaroundDetector:
                     room = target
                     self.target_rooms[request_id] = room
                     self.target_evidence[request_id] = assignment_refs
+            if room not in known_rooms:
+                result.candidates.append(Candidate(key, "BUILDING", "room_turnaround", "notify_guest",
+                    "Room identity is unverified; confirm the booking and assigned room before estimating readiness or scheduling work.",
+                    source_refs, "Obtain a causally known booking-to-room assignment from operations.",
+                    "Propose identity clarification; no delivery, room entry or readiness is assumed.",
+                    request_ids=[request.entities.guest_request_id] if request.entities.guest_request_id else [], variant="identity_unverified"))
+                continue
             state = room_state(repo, room, now)
             if booking_id and state.get("current_booking_id") == booking_id and state.get("occupancy") == "occupied":
                 self._retire(request_id, key, calendar, planning,
@@ -94,19 +118,34 @@ class TurnaroundDetector:
                 continue
             waiting = request.payload.get("type") == "arrival_waiting_room" or request.payload.get("request_type") == "waiting_for_room"
             desired = None
-            for intent in request.payload.get("intents", []):
+            intents = request.payload.get("intents")
+            text = request.payload.get("original_text")
+            for intent in intents if isinstance(intents, list) else []:
+                if not isinstance(intent, dict):
+                    continue
                 quote = intent.get("evidence_quote")
+                requested_time = intent.get("requested_time_utc")
                 if (intent.get("intent") == "early_checkin" and not intent.get("needs_review")
-                        and intent.get("requested_time_utc") and quote
-                        and quote in request.payload.get("original_text", "")
+                        and isinstance(requested_time, str) and requested_time and isinstance(quote, str) and quote
+                        and isinstance(text, str) and quote in text
                         and not (request.extraction and request.extraction.needs_review)):
-                    desired = intent["requested_time_utc"]
+                    try:
+                        instant(requested_time)
+                    except (ValueError, TypeError, OverflowError):
+                        continue
+                    desired = requested_time
                     break
             if waiting:
                 desired = now
             evidence = [*source_refs, *assignment_refs, *state.get("evidence", [])]
+            # A checkout after the clean sample invalidates that readiness
+            # evidence; the old clean value cannot resolve a newer dirty episode.
+            dirty_trigger = getattr(calendar, "last_dirty_trigger", {}).get(room)
+            clean_stamp = state.get("last_observed_utc")
+            clean_after_dirty = not dirty_trigger or clean_stamp and instant(clean_stamp) >= instant(dirty_trigger)
+            fresh_clean = clean_stamp and instant(ago(now, self.config.telemetry_max_age_minutes)) <= instant(clean_stamp) <= instant(now)
             # A request alone is neither proof of a conflict nor readiness.
-            if state.get("occupancy") == "vacant" and state.get("housekeeping_state") == "clean":
+            if state.get("occupancy") == "vacant" and state.get("housekeeping_state") == "clean" and clean_after_dirty and fresh_clean:
                 result.resolved.add(key)
                 for completed_key, completed in list(self.scheduled_jobs.items()):
                     if completed["room_id"] == room:
@@ -228,6 +267,10 @@ class TurnaroundDetector:
                             reason="The room has observed work in progress or a conflicting planned job; its future availability is not verified. Confirm completion before proposing an on-call entry or a readiness time.",
                             variant="oncall_room_unverified"))
                         continue
+                    # This batch's proposals consume local planning capacity,
+                    # while actual pending holds remain executor-owned.
+                    planning.reserve_tentative("ONCALL_1", start, end, "planned:" + key, now, room=room)
+                    planned_rooms.add(room)
                     result.candidates.append(Candidate(**common, action="schedule_cleaning", resource="ONCALL_1", human=True,
                         reason=f"Waiting guest, no regular crew capacity. Propose costly ONCALL_1 {start}..{end}; 45-minute travel and availability are simulated assumptions requiring confirmation.",
                         context={"room": state, "start_utc": start, "end_utc": end, "waiting_guest": True,
