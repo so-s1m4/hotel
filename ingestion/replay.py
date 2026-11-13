@@ -20,7 +20,6 @@ CHECKIN_TYPES = {"checkin", "checkin_early", "checkin_after_wait", "stay_in_prog
 CHECKOUT_TYPES = {"checkout", "checkout_early"}
 ROOM_STATE_FIELDS = ("temperature_c", "setpoint_c", "humidity_pct", "co2_ppm",
                      "presence", "window_open", "housekeeping_state")
-PLANNED_WORK_TYPES = {"preventive", "metering"}
 EFFECTIVE_STATUSES = {"scheduled", "sick", "vacation", "out_of_service"}
 
 
@@ -364,12 +363,10 @@ def work_order_view(row: dict, as_of: str) -> dict[str, Any]:
     out["completed_utc"] = None
     out["status"] = "open"
     out["status_asof"] = "open"
-    # Corrective summaries are written after the fact (diagnosis/outcome) and are
-    # withheld until completion. Preventive/metering orders are planned work whose
-    # scope is defined when they are scheduled (e.g. which taps get flushed, which
-    # meter is exchanged), so that text is known from creation. Always a string.
-    planned = row.get("type") in PLANNED_WORK_TYPES and row.get("status") == "completed"
-    out["summary"] = (row.get("summary") or "") if planned else ""
+    # Summaries are written by people after the fact and no source field proves
+    # what was known at creation, so the text is withheld for ALL order types until
+    # an observed completion. Always a string, so consumers can call str methods.
+    out["summary"] = ""
     return out
 
 

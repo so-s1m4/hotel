@@ -114,8 +114,7 @@ def test_booking_and_work_order_events_do_not_leak_outcome(qs_events):
         if e.event_type == "work_order_created":
             assert e.payload["completed_utc"] is None
             assert e.payload["status"] == "open" and isinstance(e.payload["summary"], str)
-            if e.payload["type"] == "corrective":
-                assert e.payload["summary"] == ""
+            assert e.payload["summary"] == ""
     done = next(e for e in qs_events if e.event_id == "wo:WO00003:resolved")
     assert done.available_at_utc == "2026-01-14T00:00:00Z"
     assert done.payload["status"] == "completed" and "hose" in done.payload["summary"]
@@ -333,10 +332,11 @@ def test_get_events_no_future(qs):
                          "2026-01-07T00:00:00Z", room_id="R308")[0]["type"] == "checkout"
 
 
-def test_planned_work_scope_known_at_creation(qs):
+def test_no_work_order_summary_before_completion(qs):
     view = {w["work_order_id"]: w for w in qs.get_work_orders("2026-01-04T00:00:00Z")}
-    assert "Legionella" in view["WO00001"]["summary"]      # preventive plan
-    assert view["WO00001"]["status"] == "open" and view["WO00001"]["completed_utc"] is None
+    assert view["WO00001"]["summary"] == "" and view["WO00001"]["status"] == "open"
+    done = {w["work_order_id"]: w for w in qs.get_work_orders("2026-01-08T10:30:00Z")}
+    assert "Legionella" in done["WO00001"]["summary"]
 
 
 def test_work_orders_view(qs):

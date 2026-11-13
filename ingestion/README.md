@@ -54,12 +54,11 @@ a few seconds (machine-specific); with a warm LLM cache it is the same.
   `status_known_utc`; before that the row looks exactly like a normal planned shift.
   `effective_status_asof` is added. `ONCALL_1` slots are derived from `building.json`
   (15:30–22:00 local, DST-aware) and marked `simulated_assumption: true`.
-- **Work orders:** at creation `status="open"`, `completed_utc=None`. `summary` is always a
-  string: corrective summaries describe the diagnosis/outcome and are `""` until
-  `completed_utc`; preventive/metering summaries describe planned scope (which taps are
-  flushed, which meter is exchanged) and are visible from creation. Postponed orders have
-  no timestamp for the status change, so they stay `open` with `""`. The full row appears
-  with the `wo:<id>:resolved` event. `repo.get_work_orders(as_of_utc, asset_id=None)` is a
+- **Work orders:** at creation `status="open"`, `completed_utc=None` and `summary=""`
+  for every order type (summaries are written after the fact; nothing in the source
+  proves what was known at creation). The full row appears with the `wo:<id>:resolved`
+  event at a real `completed_utc`. Postponed orders have no timestamp for the status
+  change and stay `open`. `repo.get_work_orders(as_of_utc, asset_id=None)` is a
   convenience getter outside the frozen Protocol.
 - **Tariffs / forecasts:** only rows with `published_utc` / `issued_utc` <= as_of, from the
   hour containing `as_of` up to `until`; per forecast target the latest known issue.
