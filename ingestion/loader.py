@@ -145,7 +145,8 @@ def norm_ts(value: str | datetime) -> str:
 def data_ts(value: str) -> str:
     """Canonical timestamp of a SOURCE fact, rounded UP to the next full second.
 
-    The contract's time grid is seconds. A fact stamped 00:15:00.500Z must not be
+    Availability keys use a whole-second grid (an implementation choice, not a
+    contract requirement). A fact stamped 00:15:00.500Z must not be
     visible to a query as of 00:15:00Z, so sub-second source times round up
     (as-of/query bounds use ``norm_ts`` and round down). Never early, at most
     one second late.

@@ -112,10 +112,14 @@ going blank at once points at the gateway, not at forty individual sensors.
 
 - UTF-8 BOM, CRLF, quoted cells (embedded commas/newlines), reordered or extra columns.
 - Timestamps in other spellings (`+00:00`, lowercase `z`, local offsets) are converted to
-  UTC. Sub-second source instants are kept in the returned rows/events, but their
-  **availability key rounds up to the next full second**, so a fact is never visible
-  before its true instant (at most one second late). Within one second events are
-  ordered by `event_id`.
+  UTC. For time-series files and `events.jsonl`, sub-second source instants are kept in
+  the returned rows/events, but their **availability key rounds up to the next full
+  second**, so a fact is never visible before its true instant (at most one second
+  late). Within one second events are ordered by `event_id`. Whole-second availability
+  is an implementation choice, not a contract requirement.
+- Accepted limitation: `*_utc` columns of the relational CSVs (bookings, roster, work
+  orders, guest requests, tariffs, forecasts) are rounded up to the whole second and the
+  original fraction is not retained. The supplied data has no fractional times.
 - A CSV header that lacks required columns is rejected (`inspect_dataset`, both CLIs).
   A zero-byte file is treated as an empty stream and reported in the audit
   (`<file>:empty_no_header`); a missing file as `<file>:missing`.
