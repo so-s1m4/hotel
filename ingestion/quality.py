@@ -68,6 +68,7 @@ def telemetry_quality(ds: Dataset) -> dict[str, Any]:
     gaps: list[dict] = []
     frozen: list[dict] = []
     rows_total = 0
+    slots_missing = off_grid = 0
     for (room, _), (ts_list, lines) in sorted(series.groups.items()):
         rows = [series._parse(line) for line in lines]
         rows_total += len(rows)
@@ -76,6 +77,8 @@ def telemetry_quality(ds: Dataset) -> dict[str, Any]:
             pos = index.get(row["timestamp_utc"])
             if pos is not None:
                 present[pos] = True
+            else:
+                off_grid += 1
             for col in series.columns:
                 if col not in ("timestamp_utc", "room_id") and row.get(col) is None:
                     missing_cells[col] += 1
@@ -84,6 +87,7 @@ def telemetry_quality(ds: Dataset) -> dict[str, Any]:
                 if value is not None and not low <= value <= high:
                     implausible.append({"room_id": room, "timestamp_utc": row["timestamp_utc"],
                                         "column": col, "value": value})
+        slots_missing += present.count(False)
         for start, length in _runs([not p for p in present]):
             if length >= GAP_MIN_INTERVALS:
                 gaps.append({"room_id": room, "kind": "row_missing", "from_utc": grid[start],
@@ -128,7 +132,8 @@ def telemetry_quality(ds: Dataset) -> dict[str, Any]:
     expected = len(grid) * len(declared)
     return {
         "rows_after_dedup": rows_total, "expected_rows": expected,
-        "missing_rows": max(expected - rows_total, 0),
+        "missing_rows": slots_missing + len(grid) * len(silent_rooms),
+        "rows_outside_manifest_grid": off_grid,
         "declared_rooms": len(declared), "rooms_without_any_rows": silent_rooms,
         "rooms_not_in_building_json": undeclared_rooms,
         "duplicates_dropped": series.duplicates_dropped,

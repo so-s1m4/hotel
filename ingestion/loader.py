@@ -259,20 +259,28 @@ class Series:
                     if not distinct and (filename != "access_log.csv" or line == line_list[-1]):
                         self.duplicates_dropped += 1
                         continue
+                    if distinct:
+                        unsorted_groups.add(key)  # order the bucket by original instant
                 elif ts < ts_list[-1]:
                     unsorted_groups.add(key)
             ts_list.append(ts)
             line_list.append(line)
-        for key in unsorted_groups:  # not seen in supplied data, but be safe
+        for key in unsorted_groups:  # out-of-order rows or several readings in one second
             ts_list, line_list = groups[key]
-            order = sorted(range(len(ts_list)), key=lambda i: ts_list[i])
-            seen: set[str] = set()
+
+            def shown(i: int) -> str:  # original (possibly sub-second) instant
+                row = line_list[i]
+                return row[ts_i] if isinstance(row, tuple) else ts_list[i]
+
+            order = sorted(range(len(ts_list)), key=lambda i: (ts_list[i], shown(i)))
+            seen: set[tuple[str, str]] = set()
             new_ts, new_lines = [], []
             for i in order:
-                if ts_list[i] in seen and filename != "access_log.csv":
+                ident = (ts_list[i], shown(i))
+                if ident in seen and filename != "access_log.csv":
                     self.duplicates_dropped += 1
                     continue
-                seen.add(ts_list[i])
+                seen.add(ident)
                 new_ts.append(ts_list[i])
                 new_lines.append(line_list[i])
             groups[key] = (new_ts, new_lines)

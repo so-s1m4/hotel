@@ -586,3 +586,22 @@ def test_invalid_manifest_interval_falls_back(tmp_path, bad):
     (d / "building.json").write_text(json.dumps({"building": {"rooms": []}}))
     ticks = [e for e in ReplayData(d, use_llm=False).iter_events() if e.event_type == "clock_tick"]
     assert len(ticks) == 4 and ticks[0].payload["interval_seconds"] == 900
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_latest_reading_within_one_second_is_by_source_instant(tmp_path, reverse):
+    d = tmp_path / "bucket"
+    d.mkdir()
+    (d / "manifest.json").write_text(json.dumps({
+        "start_utc": "2026-01-05T00:00:00Z", "end_utc": "2026-01-05T01:00:00Z"}))
+    (d / "building.json").write_text(json.dumps({"building": {"rooms": [{"id": "R101"}]}}))
+    rows = ["2026-01-05T00:15:00.100Z,R101,21.0\n", "2026-01-05T00:15:00.900Z,R101,22.0\n"]
+    (d / "room_telemetry.csv").write_text(
+        "timestamp_utc,room_id,temperature_c\n" + "".join(reversed(rows) if reverse else rows))
+    repo = ReplayData(d, use_llm=False)
+    assert repo.get_room_state("R101", "2026-01-05T00:15:00Z")["temperature_c"] is None
+    state = repo.get_room_state("R101", "2026-01-05T00:15:01Z")
+    assert state["temperature_c"] == 22.0 and state["last_observed_utc"].endswith("00.9Z")
+    both = repo.get_measurements("room_telemetry.csv", "2026-01-05T00:00:00Z",
+                                 "2026-01-05T01:00:00Z", "2026-01-05T01:00:00Z", "R101")
+    assert [r["temperature_c"] for r in both] == [21.0, 22.0]

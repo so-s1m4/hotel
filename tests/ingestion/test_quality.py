@@ -72,3 +72,20 @@ def test_quality_counts_declared_rooms_and_one_match_per_work_order(tmp_path):
     assert water["largest_decreases"][0]["drop_l"] == 89.0
     assert water["largest_decreases"][0]["metering_work_orders"] == ["WO1"]
     assert water["small_unexplained_decreases"] == 2
+
+
+def test_quality_missing_slots_ignore_rows_outside_the_grid(tmp_path):
+    d = tmp_path / "grid"
+    d.mkdir()
+    (d / "manifest.json").write_text(json.dumps({
+        "start_utc": "2026-01-05T00:00:00Z", "end_utc": "2026-01-05T01:00:00Z",
+        "interval_seconds": 900}))
+    (d / "building.json").write_text(json.dumps({"building": {"rooms": [{"id": "R101"}]}}))
+    (d / "room_telemetry.csv").write_text(
+        "timestamp_utc,room_id,temperature_c,humidity_pct,co2_ppm\n" + "".join(
+            f"2026-01-05T{t}:00Z,R101,20.0,40,500\n" for t in ("00:00", "00:15", "01:00", "01:15")))
+    (d / "room_water.csv").write_text("timestamp_utc,room_id,meter_total_l\n")
+    (d / "water_main.csv").write_text("timestamp_utc,meter_total_l\n")
+    tel = build_report(d)["room_telemetry"]
+    assert tel["expected_rows"] == 4 and tel["missing_rows"] == 2
+    assert tel["rows_outside_manifest_grid"] == 2
