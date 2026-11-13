@@ -25,11 +25,18 @@ from engine.safety import SafetyViolation, asset_ids, validate_safety
 _MISSING = object()
 
 
+class _ShallowListCheckpoint:
+    def __init__(self, value):
+        self.original = value
+        self.items = list(value)
+
+
 class _UndoDict(dict):
     """Record touched keys, never copy a growing history for each input event."""
     def __init__(self, values=(), *, mutable_values=False):
         super().__init__(values)
         self.mutable_values = mutable_values
+        self.shallow_list_values = False
         self.undo = None
 
     def __deepcopy__(self, memo):
@@ -38,15 +45,20 @@ class _UndoDict(dict):
     def touch(self, key):
         if self.undo is not None and key not in self.undo:
             value = dict.get(self, key, _MISSING)
-            self.undo[key] = deepcopy(value) if self.mutable_values and value is not _MISSING else value
+            if self.shallow_list_values and isinstance(value, list):
+                # Original-calendar metadata borrows live calendars; only the
+                # list membership is transactional, never calendar identity.
+                self.undo[key] = _ShallowListCheckpoint(value)
+            else:
+                self.undo[key] = deepcopy(value) if self.mutable_values and value is not _MISSING else value
 
     def __getitem__(self, key):
-        if self.mutable_values:
+        if self.mutable_values or self.shallow_list_values:
             self.touch(key)
         return dict.__getitem__(self, key)
 
     def get(self, key, default=None):
-        if self.mutable_values:
+        if self.mutable_values or self.shallow_list_values:
             self.touch(key)
         return dict.get(self, key, default)
 
@@ -78,6 +90,9 @@ class _UndoDict(dict):
                 if old is _MISSING:
                     dict.pop(self, key, None)
                 else:
+                    if isinstance(old, _ShallowListCheckpoint):
+                        old.original[:] = old.items
+                        old = old.original
                     dict.__setitem__(self, key, old)
 
 
@@ -123,7 +138,8 @@ class _EventTransaction:
         self.notification_suppressed = engine.notifications.suppressed
         for owner, keys, mutable in (
             (engine, ("_proposals", "_decisions"), False),
-            (engine.executor, ("_submitted", "_completed"), False),
+            (engine.executor, tuple(key for key in ("_submitted", "_completed", "_submitted_calendars")
+                                    if hasattr(engine.executor, key)), False),
             (engine.episodes, ("_generations",), False),
             (engine.episodes, ("active",), True),
             (engine.notifications, ("history",), False),
@@ -135,6 +151,8 @@ class _EventTransaction:
                 if not isinstance(value, _UndoDict):
                     value = _UndoDict(value, mutable_values=mutable)
                     setattr(owner, key, value)
+                if owner is engine.executor and key == "_submitted_calendars":
+                    value.shallow_list_values = True
                 value.undo = {}
                 self.maps.append(value)
         for owner, key in ((engine, "_observed_event_ids"), (engine.calendar, "_cancelled_ids"),
@@ -249,6 +267,15 @@ class DecisionEngine:
             self._transaction = None
 
     def _process_event(self, event):
+        declared_room = event.entities.room_id
+        if (event.event_type == "guest_request" and declared_room not in {None, "BUILDING"}
+                and declared_room not in {room["id"] for room in self.building["building"]["rooms"]}):
+            # Missing identity can be clarified or resolved from known booking
+            # facts. An explicit undeclared room is contradictory input, and
+            # must not be silently retargeted into an actionable room workflow.
+            self.rejections.append({"event_id": event.event_id,
+                                    "reason": "Unknown candidate asset", "asset": declared_room})
+            return []
         now = event.available_at_utc
         self.calendar.current_time = now
         self._outbox = []
@@ -283,7 +310,7 @@ class DecisionEngine:
             detector = (self.turnaround, self.water, self.energy, self.maintenance,
                         self.surge, self.logistics, self.optimization)[index]
             if detector is not self.turnaround and not (
-                detector in (self.water, self.energy, self.optimization, self.logistics)
+                detector in (self.water, self.energy, self.optimization)
                 and event.event_type != "clock_tick"
             ):
                 self._transaction.detector(detector)

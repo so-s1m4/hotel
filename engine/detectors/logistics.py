@@ -20,10 +20,21 @@ class LogisticsDetector:
     def __init__(self, config):
         self.config = config
         self.open_transfers = {}
+        self.destination_commitments = {}
 
     def detect(self, event, repo, building, calendar):
         result = DetectionResult()
-        if event.event_type != "clock_tick" or instant(event.available_at_utc).minute != 0:
+        # Cancellation is already an observed planner fact. Retire its marker
+        # even on roster events, without proposing new physical work.
+        cancelled = {entry["decision_id"] for entry in calendar.cancellations}
+        for asset, held in list(self.open_transfers.items()):
+            if held["decision_id"] in cancelled:
+                self.open_transfers.pop(asset)
+                self.destination_commitments.pop(held["decision_id"], None)
+                result.resolved.add("logistics:"+asset)
+        for ident in cancelled:
+            self.destination_commitments.pop(ident, None)
+        if event.event_type != "clock_tick":
             return result
         now = event.available_at_utc
         assets = {a["id"]: a for a in building["building"].get("assets", [])}
@@ -32,30 +43,25 @@ class LogisticsDetector:
             groups[(row.get("asset_id"), row.get("metric"))].append(row)
         fresh = {key: rows[-1] for key, rows in groups.items()
                  if instant(rows[-1]["timestamp_utc"]) >= instant(ago(now, 60))}
-        events = repo.get_events(ago(now, 120), now, now)
+        events = [e for e in repo.get_events(ago(now, 12*60), now, now)
+                  if e.get("timestamp_utc") and instant(ago(now, 12*60)) <= instant(e["timestamp_utc"]) <= instant(now)
+                  and (not e.get("available_at_utc") or instant(e["available_at_utc"]) <= instant(now))]
         observed_updates = {}
         for e in events:
-            stamp, asset = e.get("timestamp_utc"), e.get("asset_id")
-            if (not stamp or not asset or not instant(ago(now, 120)) <= instant(stamp) <= instant(now)
-                    or e.get("type") not in {"waste_pickup", "floor_bin_emptied", "vending_restocked"}):
+            stamp, asset = e["timestamp_utc"], e.get("asset_id")
+            if not asset or e.get("type") not in {"waste_pickup", "floor_bin_emptied", "vending_restocked"}:
                 continue
             if asset not in observed_updates or instant(stamp) > instant(observed_updates[asset]):
                 observed_updates[asset] = stamp
-        pickups = [e["timestamp_utc"] for e in events if e.get("type") == "waste_pickup" and e.get("asset_id") == "WASTE_MAIN"
-                   and e.get("timestamp_utc") and instant(ago(now, 120)) <= instant(e["timestamp_utc"]) <= instant(now)]
-        for held in self.open_transfers.values():
-            if any(instant(t) >= instant(held["end_utc"]) for t in pickups):
-                calendar.release_volume(held["decision_id"])
-        for asset, held in list(self.open_transfers.items()):
-            row = fresh.get((asset, "fill_pct"))
-            if row and number(row.get("value")) is not None and float(row["value"]) < 40:
-                calendar.cancel(held["decision_id"])
-                self.open_transfers.pop(asset)
-                result.resolved.add("logistics:" + asset)
-        planning = deepcopy(calendar)
         main = fresh.get(("WASTE_MAIN", "fill_pct"))
         if main and observed_updates.get("WASTE_MAIN") and instant(observed_updates["WASTE_MAIN"]) > instant(main["timestamp_utc"]):
-            main = None  # await a post-pickup destination measurement before planning volume
+            main = None  # a pre-pickup level cannot establish post-pickup capacity
+        self._reconcile_transfers(result, calendar, assets, fresh, main, events, observed_updates, now)
+        # Existing commitments are checked each clock tick; new plans/forecasts
+        # keep their original hourly cadence.
+        if instant(now).minute != 0:
+            return result
+        planning = deepcopy(calendar)
         for (asset, metric), latest in sorted(fresh.items()):
             value = number(latest.get("value"))
             if value is None or asset not in assets:
@@ -64,10 +70,6 @@ class LogisticsDetector:
             if asset in observed_updates and instant(observed_updates[asset]) > instant(latest["timestamp_utc"]):
                 # A known pickup/restock/emptying after this reading makes its
                 # level obsolete; do not redispatch or order from a stale level.
-                if asset in self.open_transfers:
-                    held = self.open_transfers.pop(asset)
-                    calendar.cancel(held["decision_id"])
-                    planning.cancel(held["decision_id"])
                 continue
             if metric == "fill_pct":
                 if not 0 <= value <= 100:
@@ -116,7 +118,7 @@ class LogisticsDetector:
                             evidence, "Confirm robot availability and destination capacity; seek human handling if the bin remains full.",
                             "Raise a logistics coordination request.", priority="high" if value >= 100 else "medium", variant="blocked"))
                 elif asset == "WASTE_MAIN":
-                    rows = groups[(asset, metric)]
+                    rows = self._post_update(groups[(asset, metric)], observed_updates.get(asset))
                     rate = self._rate(rows, increasing=True)
                     hours = (100-value)/rate if rate and rate > 0 else None
                     if value >= self.config.waste_trigger_pct or (hours is not None and hours < 24):
@@ -128,17 +130,85 @@ class LogisticsDetector:
                 capacity = number(assets[asset].get("capacity", {}).get(metric.removeprefix("stock_")))
                 if not capacity or not 0 <= value <= capacity:
                     continue
-                rate = self._rate(groups[(asset, metric)], increasing=False, max_value=capacity)
+                history = self._post_update(groups[(asset, metric)], observed_updates.get(asset))
+                rate = self._rate(history, increasing=False, max_value=capacity)
                 hours = value/rate if rate and rate > 0 else None
                 if value <= capacity*self.config.vending_low_fraction or (hours is not None and hours < 24):
                     if hours is not None:
-                        history = groups[(asset, metric)]
                         evidence.append(f"logistics.csv:{asset}:{metric}:{history[0]['timestamp_utc']}..{latest['timestamp_utc']} (trend input window)")
                     regular = next_regular(now, {0, 3}, 10)
                     self._service(result, asset, metric, value, hours, regular, now, evidence)
                 elif value > capacity*0.5:
                     result.resolved.add("service:"+asset+":"+metric)
         return result
+
+    @staticmethod
+    def _post_update(rows, update):
+        # A known restock/pickup is a discontinuity even when subsequent sampled
+        # levels happen to continue the old monotone trend.
+        return [row for row in rows if not update or instant(row["timestamp_utc"]) > instant(update)]
+
+    def _cancel_transfer(self, result, calendar, asset, held, reason, evidence):
+        count = len(calendar.cancellations)
+        calendar.cancel(held["decision_id"], reason=reason)
+        for entry in calendar.cancellations[count:]:
+            if entry["decision_id"] == held["decision_id"]:
+                entry["evidence"] = list(evidence)
+        self.open_transfers.pop(asset, None)
+        self.destination_commitments.pop(held["decision_id"], None)
+        result.resolved.add("logistics:"+asset)
+
+    def _reconcile_transfers(self, result, calendar, assets, fresh, main, events, updates, now):
+        starts = {ident: start for _, jobs in calendar.iter_reservations() for start, end, ident in jobs}
+        for asset, held in list(self.open_transfers.items()):
+            ident = held["decision_id"]
+            commitment = self.destination_commitments.setdefault(ident, {**held, "source_asset": asset})
+            if ident in starts:
+                commitment["start_utc"] = starts[ident]
+            row = fresh.get((asset, "fill_pct"))
+            value = number(row.get("value")) if row else None
+            recovery = row["timestamp_utc"] if value is not None and 0 <= value < 40 else None
+            if updates.get(asset) and (not row or instant(updates[asset]) > instant(row["timestamp_utc"])):
+                recovery = updates[asset]
+            if recovery:
+                if commitment.get("start_utc") and instant(now) <= instant(commitment["start_utc"]):
+                    refs = ([f"logistics.csv:{asset}:fill_pct:{recovery}"]
+                            if row and recovery == row["timestamp_utc"] else
+                            [f"events.jsonl:{e.get('event_id') or asset}:{recovery}" for e in events
+                             if e.get("asset_id") == asset and e["timestamp_utc"] == recovery])
+                    self._cancel_transfer(result, calendar, asset, held,
+                        f"Observed source recovery at {recovery} makes the future bin transfer unnecessary", refs)
+                else:
+                    # Source recovery does not say where waste went. In
+                    # particular it cannot free an unobserved destination.
+                    commitment["source_recovered_utc"] = recovery
+                    self.open_transfers.pop(asset)
+                    result.resolved.add("logistics:"+asset)
+        pickups = [e["timestamp_utc"] for e in events
+                   if e.get("type") == "waste_pickup" and e.get("asset_id") == "WASTE_MAIN"]
+        main_value = number(main.get("value")) if main else None
+        valid_main = main is not None and main_value is not None and 0 <= main_value <= 100
+        for ident, held in list(self.destination_commitments.items()):
+            recovered = held.get("source_recovered_utc")
+            post_recovery_main = (valid_main and recovered
+                and instant(main["timestamp_utc"]) >= max(instant(held["end_utc"]), instant(recovered)))
+            matching_pickup = any(instant(stamp) >= instant(held["end_utc"]) for stamp in pickups)
+            if post_recovery_main or matching_pickup:
+                calendar.release_volume(ident)
+                self.destination_commitments.pop(ident)
+        capacity = number(assets.get("WASTE_MAIN", {}).get("volume_l"))
+        limit = capacity*self.config.container_max_fill_pct/100 if capacity else None
+        # Withdraw the latest future jobs first if new observations invalidate
+        # their shared capacity. Elapsed work remains uncertain, not cancelled.
+        for ident, held in sorted(list(self.destination_commitments.items()),
+                                  key=lambda item: (item[1].get("start_utc", ""), item[0]), reverse=True):
+            if not held.get("start_utc") or instant(held["start_utc"]) < instant(now):
+                continue
+            total = sum(amount for _, amount in calendar.volume_reservations.get("WASTE_MAIN", []))
+            if valid_main and limit and capacity*main_value/100+total > limit+1e-8:
+                refs = [f"logistics.csv:WASTE_MAIN:fill_pct:{main['timestamp_utc']}"]
+                self._cancel_transfer(result, calendar, held["source_asset"], held,
+                    f"Latest destination evidence as of {now} does not verify capacity for the future transfer; withdraw its proposed resource and volume hold", refs)
 
     @staticmethod
     def _rate(rows, increasing, max_value=100):

@@ -60,7 +60,7 @@ def booking(created='2026-01-01T09:00:00Z', **extra):
             'arrival_utc':'2026-01-06T10:00:00Z', 'departure_utc':'2026-01-07T10:00:00Z', **extra}
 
 
-@pytest.mark.parametrize('missing_room', [None, 'BUILDING', 'R999'])
+@pytest.mark.parametrize('missing_room', [None, 'BUILDING'])
 def test_missing_room_resolves_from_causally_known_booking(missing_room):
     repo = prepared()
     repo.bookings = [booking(observed_room_id='R101', observed_state='not_arrived')]

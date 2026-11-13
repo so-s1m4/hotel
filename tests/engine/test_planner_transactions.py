@@ -166,3 +166,93 @@ def test_failed_future_input_does_not_advance_successful_input_order():
     engine.process(tick('2026-01-06T09:00:00Z'))
     assert engine.event_count == 1
     assert len(engine._seen_ids) == 1
+
+
+def test_original_submission_calendar_metadata_rolls_back_without_cloning_identity(monkeypatch):
+    repo,engine = prepared()
+    repo.slots = [slot()]
+    # The ledger stores lists of borrowed original-calendar references.
+    previous_calendars = [engine.calendar]
+    engine.executor._submitted_calendars['previous-command'] = previous_calendars
+    original_flush = engine._flush_notifications
+    def fail_after_submissions(event):
+        original_flush(event)
+        assert len(engine.executor._submitted_calendars) == 3
+        raise OSError('after original-calendar metadata')
+    monkeypatch.setattr(engine,'_flush_notifications',fail_after_submissions)
+    with pytest.raises(OSError,match='original-calendar metadata'):
+        engine.process(request())
+    assert list(engine.executor._submitted_calendars) == ['previous-command']
+    assert engine.executor._submitted_calendars['previous-command'] is previous_calendars
+    assert len(previous_calendars) == 1
+    assert previous_calendars[0] is engine.calendar
+    assert engine.executor.audit == []
+    assert engine.event_count == 0
+    monkeypatch.setattr(engine,'_flush_notifications',original_flush)
+    rows = engine.process(request())
+    assert {row.action for row in rows} == {'schedule_cleaning','notify_guest'}
+    assert set(engine.executor._submitted_calendars) == {'previous-command',*(row.event_id for row in rows)}
+    assert engine.executor._submitted_calendars['previous-command'] is previous_calendars
+    for calendars in engine.executor._submitted_calendars.values():
+        assert isinstance(calendars, list) and len(calendars) == 1
+        assert calendars[0] is engine.calendar
+    assert len(engine.executor.audit) == 2
+    assert engine.process(request()) == []
+
+
+def test_failure_after_energy_scoped_notice_restores_existing_nested_priority_state():
+    from tests.engine.fixtures import energy_repo
+    source = energy_repo(temperature=26)
+    repo = FlakyGateway()
+    repo.states,repo.measurements = source.states,source.measurements
+    for row in repo.states['R101']:
+        row['current_booking_id'] = 'CURRENT'
+    engine = DecisionEngine(repo,BUILDING)
+    old_key = ('booking:PREVIOUS','overheating')
+    new_key = ('booking:CURRENT','overheating')
+    engine.energy._notice_priorities['R101'][old_key] = 'high'
+    before = frozen(engine)
+    repo.fail_method = 'tariffs'
+    with pytest.raises(OSError,match='tariffs'):
+        engine.process(tick())
+    assert frozen(engine) == before
+    assert engine.energy._notice_priorities.default_factory is dict
+    assert engine.energy._notice_priorities['R101'] == {old_key:'high'}
+    rows = engine.process(tick())
+    assert sum(row.action=='notify_guest' and row.issue_type=='heating_comfort' for row in rows) == 1
+    assert engine.energy._notice_priorities['R101'] == {old_key:'high',new_key:'high'}
+    assert engine.event_count == 1
+    assert len({row['decision_id'] for row in engine.executor.audit}) == len(engine.executor.audit)
+    assert engine.process(tick()) == []
+
+
+@pytest.mark.parametrize('access',['item','get','setdefault'])
+def test_original_calendar_list_append_rolls_back_in_place_without_cloning_calendars(monkeypatch,access):
+    from engine.resources import ResourceCalendar
+    repo,engine=prepared()
+    original_list=[engine.calendar]
+    engine.executor._submitted_calendars['previous-command']=original_list
+    other_calendar=ResourceCalendar()
+    original=engine.optimization.detect
+    def append_and_fail(*args,**kwargs):
+        ledger=engine.executor._submitted_calendars
+        calendars=(ledger['previous-command'] if access=='item' else
+                   ledger.get('previous-command') if access=='get' else
+                   ledger.setdefault('previous-command',[]))
+        calendars.append(other_calendar)
+        assert len(calendars)==2
+        raise OSError('after calendar-list append')
+    monkeypatch.setattr(engine.optimization,'detect',append_and_fail)
+    with pytest.raises(OSError,match='calendar-list append'):
+        engine.process(tick())
+    restored=engine.executor._submitted_calendars['previous-command']
+    assert restored is original_list
+    assert len(restored)==1
+    assert restored[0] is engine.calendar
+    assert other_calendar not in restored
+    assert engine.event_count==0
+    assert engine.executor.audit==[]
+    monkeypatch.setattr(engine.optimization,'detect',original)
+    engine.process(tick())
+    assert engine.event_count==1
+    assert engine.executor._submitted_calendars['previous-command'][0] is engine.calendar

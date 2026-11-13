@@ -141,10 +141,21 @@ def _validate_safety(decision: DecisionRecordV2, context: dict) -> None:
     if decision.resource_id:
         resources = {r["resource_id"]: r["role"] for r in building.get("staff", {}).get("resources", [])}
         require(decision.resource_id in resources, "Unknown resource")
+        # Capability is independent of the way availability is obtained. The
+        # special on-call window must not bypass the same role checks that
+        # apply to roster-backed resources.
+        if decision.action in {"schedule_cleaning", "request_inspection"}:
+            require(resources[decision.resource_id] in {"cleaner", "on_call_housekeeping"},
+                    "Only human housekeeping may perform basic room inspections or cleaning")
+        if decision.action == "dispatch_technician":
+            require(resources[decision.resource_id] == "technician", "Technician role required")
+        if decision.action == "dispatch_robot":
+            require(resources[decision.resource_id] == "robot", "Robot action requires robot resource")
         start, end = context.get("start_utc"), context.get("end_utc")
         require(start is not None and end is not None, "Resource reservation interval is required")
         require(instant(decision.timestamp_utc) <= instant(start) < instant(end), "Invalid reservation interval")
         if decision.resource_id == "ONCALL_1":
+            require(resources[decision.resource_id] == "on_call_housekeeping", "On-call resource must be housekeeping")
             require(context.get("oncall") and context.get("waiting_guest"), "On-call is only for waiting guests")
             local_start, local_end = instant(start).astimezone(VIENNA), instant(end).astimezone(VIENNA)
             require(local_start.date() == local_end.date() and
@@ -156,12 +167,6 @@ def _validate_safety(decision: DecisionRecordV2, context: dict) -> None:
             require(slot.get("resource_id") == decision.resource_id and scheduled(slot, decision.timestamp_utc), "Resource absent or availability unknown")
             require(slot.get("role") == resources[decision.resource_id], "Roster and resource role disagree")
             require(instant(slot["start_utc"]) <= instant(start) and instant(end) <= instant(slot["end_utc"]), "Reservation outside actual shift")
-            if decision.action in {"schedule_cleaning", "request_inspection"}:
-                require(resources[decision.resource_id] == "cleaner", "Only human cleaners may certify housekeeping")
-            if decision.action == "dispatch_technician":
-                require(resources[decision.resource_id] == "technician", "Technician role required")
-            if decision.action == "dispatch_robot":
-                require(resources[decision.resource_id] == "robot", "Robot action requires robot resource")
         calendar = context.get("calendar")
         require(calendar is not None and calendar.available(decision.resource_id, start, end, decision.timestamp_utc, exclude_decision_id=decision.event_id), "Resource already reserved or calendar missing")
         if room_action and entry:

@@ -126,6 +126,8 @@ class ResourceCalendar:
     def reserve_volume(self, destination: str, amount: float, decision_id: str):
         if not destination or not decision_id or isinstance(amount, bool) or not isinstance(amount, (int, float)) or not isfinite(amount) or amount <= 0:
             raise ValueError("Volume reservation must be positive, finite and identified")
+        if decision_id in self._cancelled_ids:
+            raise ValueError("Cancelled command requires a fresh decision ID")
         if any(key == decision_id for target, values in self.volume_reservations.items()
                if target != destination for key, _ in values):
             raise ValueError("Conflicting destination for volume reservation")
@@ -169,6 +171,8 @@ class ResourceCalendar:
     def _check_reservation(self, resource, start, end, decision_id, now, room):
         if not resource or not decision_id:
             raise ValueError("Resource and decision identifiers are required")
+        if decision_id in self._cancelled_ids:
+            raise ValueError("Cancelled command requires a fresh decision ID")
         self._interval(start, end, now)
         self._validate_reservation_identity(resource, start, end, decision_id, room)
         if not self.available(resource, start, end, now, exclude_decision_id=decision_id):

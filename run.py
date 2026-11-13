@@ -32,10 +32,11 @@ def main() -> int:
     destinations = [args.out, audit, rejection_path] + ([args.insights] if args.insights else [])
     if args.annual_insights:
         destinations += [args.annual_insights, args.annual_insights.with_suffix(".json")]
-    if len({p.resolve() for p in destinations}) != len(destinations):
-        parser.exit(2, "Output paths must be distinct.\n")
-    if any(p.resolve().is_relative_to(args.data_dir.resolve()) for p in destinations):
-        parser.exit(2, "Write outputs outside the source dataset directory.\n")
+    from engine.output_artifacts import preflight_outputs, publish_artifacts
+    try:
+        preflight_outputs(destinations, args.data_dir, protected_inputs=[args.config] if args.config else [])
+    except (ValueError, OSError) as exc:
+        parser.exit(2, f"Output preflight failed; prior outputs were not replaced: {exc}\n")
     from ingestion.replay import ReplayData
     from engine.core import EngineConfig
     from engine.planner import DecisionEngine
@@ -54,26 +55,28 @@ def main() -> int:
         parser.exit(2, f"Replay gateway is not implemented yet: {exc}. Engine scenario tests run independently; use --check for input preflight.\n")
     except (ValueError, KeyError, OSError, TypeError) as exc:
         parser.exit(2, f"Replay failed; decisions were not written: {exc}\n")
-    # Do not touch prior outputs unless the entire gateway replay succeeded.
+    # Serialize every output before publishing any member of the generation.
     try:
-        write_decisions(records, args.out)
-    except (ValueError, OSError) as exc:
-        parser.exit(2, f"Output validation failed; decisions were not replaced: {exc}\n")
-    audit.parent.mkdir(parents=True, exist_ok=True)
-    audit.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in engine.executor.audit), encoding="utf-8")
-    if args.insights:
-        args.insights.parent.mkdir(parents=True, exist_ok=True)
-        args.insights.write_text(generate_insights(records, metadata), encoding="utf-8")
-    if args.annual_insights:
-        args.annual_insights.parent.mkdir(parents=True, exist_ok=True)
-        args.annual_insights.write_text(render_report(annual), encoding="utf-8")
-        args.annual_insights.with_suffix(".json").write_text(json.dumps(annual, ensure_ascii=False, indent=2)+"\n", encoding="utf-8")
+        artifacts = {args.out: lambda path: write_decisions(records, path)}
+        text_artifacts = {
+            audit: "".join(json.dumps(row, ensure_ascii=False, allow_nan=False) + "\n" for row in engine.executor.audit),
+            rejection_path: "".join(json.dumps(row, ensure_ascii=False, allow_nan=False) + "\n" for row in engine.rejections),
+        }
+        if args.insights:
+            text_artifacts[args.insights] = generate_insights(records, metadata)
+        if args.annual_insights:
+            text_artifacts[args.annual_insights] = render_report(annual)
+            text_artifacts[args.annual_insights.with_suffix(".json")] = json.dumps(annual, ensure_ascii=False, indent=2, allow_nan=False) + "\n"
+        artifacts.update({path: (lambda temporary, text=text: temporary.write_text(text, encoding="utf-8"))
+                          for path, text in text_artifacts.items()})
+        publish_artifacts(artifacts)
+    except (ValueError, OSError, TypeError) as exc:
+        parser.exit(2, f"Output generation failed; replay_complete was not reached: {exc}\n")
     print(json.dumps({"status": "replay_complete", "events": engine.event_count,
                       "decisions": len(records), "safety_rejections": len(engine.rejections),
                       "out": str(args.out), "audit": str(audit), "config": asdict(config), "notifications_suppressed": engine.notifications.suppressed,
                       "elapsed_seconds": round(perf_counter()-started, 3),
                       "detector_diagnostics": {"water": dict(engine.water.diagnostics)}}, indent=2))
-    rejection_path.write_text("".join(json.dumps(row) + "\n" for row in engine.rejections), encoding="utf-8")
     return 0
 
 
