@@ -185,8 +185,8 @@ def _raw_events(repo: "ReplayData") -> list[NormalizedEventV1]:
     rooms = set(repo.ds.room_ids)
     out = []
     for ev in repo.ds.raw_events:
-        ts = ev["timestamp_utc"]                 # availability key (whole seconds)
-        occurred = ev.get("_source_ts") or ts    # original instant, precision kept
+        occurred = ev.get("_source_ts") or ev["timestamp_utc"]
+        ts = ev.get("_available_ts", ev["timestamp_utc"])  # publication grid, never before occurrence
         asset = ev.get("asset_id")
         room = ev.get("room_id") or ev.get("to_room")
         if room is None and isinstance(asset, str):

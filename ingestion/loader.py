@@ -581,6 +581,7 @@ class Dataset:
         def build():
             path = self.dir / "events.jsonl"
             out, seen, dropped, bad = [], set(), 0, 0
+            bad_publication = 0
             if not path.exists():
                 log.warning("missing file %s", path)
                 return out
@@ -598,6 +599,10 @@ class Dataset:
                     if not isinstance(event, dict):
                         bad += 1
                         continue
+                    # These keys are private loader metadata, never trusted
+                    # fields from the raw JSON record.
+                    event.pop("_source_ts", None)
+                    event.pop("_available_ts", None)
                     try:
                         raw_ts = ts
                         ts = data_ts(raw_ts)
@@ -608,6 +613,14 @@ class Dataset:
                     except (ValueError, TypeError, AttributeError):
                         bad += 1
                         continue
+                    if "available_at_utc" in event:
+                        try:
+                            event["_available_ts"] = max(ts, data_ts(event["available_at_utc"]))
+                        except (ValueError, TypeError, AttributeError, OverflowError):
+                            # An explicit unknown publication cannot be turned
+                            # into immediate knowledge at occurrence time.
+                            bad_publication += 1
+                            continue
                     ident = str(ident)
                     event["event_id"] = ident
                     _sanitize_identity_fields(event)
@@ -618,6 +631,9 @@ class Dataset:
                     event["timestamp_utc"] = ts
                     out.append(event)
             out.sort(key=lambda e: (e["timestamp_utc"], e["event_id"]))
+            if bad_publication:
+                self.audit["events.jsonl:invalid_publication_timestamps"] = bad_publication
+                log.warning("events.jsonl: skipped %d facts with invalid publication timestamps", bad_publication)
             if dropped or bad:
                 self.audit["events.jsonl:duplicates_dropped"] = dropped
                 self.audit["events.jsonl:unparseable_lines"] = bad

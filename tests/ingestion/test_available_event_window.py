@@ -93,7 +93,8 @@ def test_explicit_unknown_or_invalid_availability_is_not_silently_treated_as_occ
     raw['available_at_utc']=invalid
     repo=repo_factory([raw])
     assert repo.get_events_available_between(EARLY,LATER,LATER)==[]
-    assert ids(repo.get_events(EARLY,LATER,LATER))==['UNKNOWN']
+    assert repo.get_events(EARLY,LATER,LATER)==[]
+    assert repo.audit['events.jsonl:invalid_publication_timestamps']==1
 
 
 def test_results_are_independent_deep_copies_even_for_arbitrary_nested_source_fields(repo_factory):

@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 
 from common.contracts.schemas import NormalizedEventV1
 
-from .loader import Dataset, data_ts, fmt_ts, norm_ts, parse_ts, shift_ts
+from .loader import Dataset, fmt_ts, norm_ts, parse_ts, shift_ts
 
 ROSTER_PUBLICATION_LEAD_DAYS = 14  # observed: every 'scheduled' row is known start-14d
 CHECKIN_TYPES = {"checkin", "checkin_early", "checkin_after_wait", "stay_in_progress"}
@@ -22,6 +22,12 @@ CHECKOUT_TYPES = {"checkout", "checkout_early"}
 ROOM_STATE_FIELDS = ("temperature_c", "setpoint_c", "humidity_pct", "co2_ppm",
                      "presence", "window_open", "housekeeping_state")
 EFFECTIVE_STATUSES = {"scheduled", "sick", "vacation", "out_of_service"}
+
+
+def _occurrence_order(event: dict) -> tuple[datetime, str]:
+    # Ceil-to-second availability can tie two different source instants. Keep
+    # original chronology for lifecycle inference; equal instants use stable IDs.
+    return parse_ts(event.get("_source_ts") or event["timestamp_utc"]), event["event_id"]
 
 
 class ReplayData:
@@ -45,23 +51,12 @@ class ReplayData:
     # ------------------------------------------------------------ indexes
     def _event_index(self) -> dict[str, Any]:
         if "events" not in self._idx:
-            events = self.ds.raw_events
+            events = sorted(self.ds.raw_events, key=_occurrence_order)
             by_room: dict[str, list[dict]] = {}
             by_booking: dict[str, list[dict]] = {}
             available = []
             for ev in events:
-                # Loader timestamp_utc is already the conservative availability
-                # grid for a source occurrence (_source_ts retains precision).
-                # An explicit later publication must not be overwritten by it.
-                try:
-                    known = ev["timestamp_utc"]
-                    if "available_at_utc" in ev:
-                        known = max(known, data_ts(ev["available_at_utc"]))
-                    available.append((parse_ts(known), ev))
-                except (ValueError, TypeError, AttributeError, OverflowError):
-                    # Unknown/malformed explicit publication is not evidence of
-                    # immediate availability. Existing occurrence API is intact.
-                    pass
+                available.append((parse_ts(ev.get("_available_ts", ev["timestamp_utc"])), ev))
                 rooms = {ev.get("room_id"), ev.get("from_room"), ev.get("to_room")}
                 asset = ev.get("asset_id")
                 if isinstance(asset, str):
@@ -111,7 +106,8 @@ class ReplayData:
                    room_id: str | None = None,
                    event_type: str | None = None) -> list[dict[str, Any]]:
         """Raw events.jsonl records with start <= timestamp <= min(end, as_of)."""
-        start, end = norm_ts(start_utc), min(norm_ts(end_utc), norm_ts(as_of_utc))
+        as_of = norm_ts(as_of_utc)
+        start, end = norm_ts(start_utc), min(norm_ts(end_utc), as_of)
         idx = self._event_index()
         if room_id is None:
             rows, ts = idx["all"], idx["all_ts"]
@@ -119,7 +115,8 @@ class ReplayData:
             rows, ts = idx["by_room"].get(room_id, []), idx["by_room_ts"].get(room_id, [])
         lo, hi = bisect_left(ts, start), bisect_right(ts, end)
         return [public_event(ev) for ev in rows[lo:hi]
-                if event_type is None or ev.get("type") == event_type]
+                if ev.get("_available_ts", ev["timestamp_utc"]) <= as_of
+                and (event_type is None or ev.get("type") == event_type)]
 
     def get_events_available_between(self, start_utc: str, end_utc: str,
                                      as_of_utc: str) -> list[dict[str, Any]]:
@@ -150,8 +147,11 @@ class ReplayData:
         hi = bisect_right(idx["by_room_ts"].get(room_id, []), as_of)
         moved_out: dict[str, str] = {}  # booking_id -> evidence of a later move away
         for ev in reversed(rows[:hi]):
+            if ev.get("_available_ts", ev["timestamp_utc"]) > as_of:
+                continue
             kind = ev.get("type")
-            ref = f"events.jsonl:{ev['event_id']}:{kind}:{ev['timestamp_utc']}"
+            occurred = ev.get("_source_ts") or ev["timestamp_utc"]
+            ref = f"events.jsonl:{ev['event_id']}:{kind}:{occurred}"
             booking = ev.get("booking_id")
             if kind in CHECKIN_TYPES and ev.get("room_id") == room_id:
                 if booking in moved_out:  # guest was moved to another room afterwards
@@ -167,8 +167,10 @@ class ReplayData:
                 # an in-house guest moved INTO this room (check-in observed earlier)
                 state = None
                 for prior in idx["by_booking"].get(booking, []):
-                    if (prior["timestamp_utc"], prior["event_id"]) >= (ev["timestamp_utc"], ev["event_id"]):
+                    if _occurrence_order(prior) >= _occurrence_order(ev):
                         break
+                    if prior.get("_available_ts", prior["timestamp_utc"]) > as_of:
+                        continue
                     if prior.get("type") in CHECKIN_TYPES:
                         state = "in"
                     elif prior.get("type") in CHECKOUT_TYPES:
@@ -210,13 +212,16 @@ class ReplayData:
         for ev in self._event_index()["by_booking"].get(row["booking_id"], []):
             if ev["timestamp_utc"] > as_of:
                 break
+            if ev.get("_available_ts", ev["timestamp_utc"]) > as_of:
+                continue
+            occurred = ev.get("_source_ts") or ev["timestamp_utc"]
             kind = ev.get("type")
-            refs.append(f"events.jsonl:{ev['event_id']}:{kind}:{ev['timestamp_utc']}")
+            refs.append(f"events.jsonl:{ev['event_id']}:{kind}:{occurred}")
             if kind in CHECKIN_TYPES:
-                observed, checkin = "checked_in", ev["timestamp_utc"]
+                observed, checkin = "checked_in", occurred
                 room = ev.get("room_id") or room
             elif kind in CHECKOUT_TYPES:
-                observed, checkout = "checked_out", ev["timestamp_utc"]
+                observed, checkout = "checked_out", occurred
             elif kind == "arrival_waiting_room":
                 observed = "waiting_for_room"
             elif kind == "no_show":
@@ -419,6 +424,9 @@ def public_event(ev: dict) -> dict[str, Any]:
     out = dict(ev)
     if "source_fields" in out:  # nested original values: never share with the cache
         out["source_fields"] = deepcopy(out["source_fields"])
+    available = out.pop("_available_ts", None)
+    if available is not None:
+        out["available_at_utc"] = available
     precise = out.pop("_source_ts", None)
     if precise is not None:
         out["timestamp_utc"] = precise
