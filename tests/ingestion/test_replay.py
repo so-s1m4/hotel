@@ -605,3 +605,22 @@ def test_latest_reading_within_one_second_is_by_source_instant(tmp_path, reverse
     both = repo.get_measurements("room_telemetry.csv", "2026-01-05T00:00:00Z",
                                  "2026-01-05T01:00:00Z", "2026-01-05T01:00:00Z", "R101")
     assert [r["temperature_c"] for r in both] == [21.0, 22.0]
+
+
+@pytest.mark.parametrize("order", [(0, 1, 2), (2, 0, 1), (1, 2, 0), (2, 1, 0)])
+def test_mixed_fractional_and_exact_rows_survive_any_file_order(tmp_path, order):
+    d = tmp_path / "mix"
+    d.mkdir()
+    (d / "manifest.json").write_text(json.dumps({
+        "start_utc": "2026-01-05T00:00:00Z", "end_utc": "2026-01-05T01:00:00Z"}))
+    (d / "building.json").write_text(json.dumps({"building": {"rooms": [{"id": "R101"}]}}))
+    rows = ["2026-01-05T00:15:00.5Z,R101,20.0\n", "2026-01-05T00:15:00.15Z,R101,19.0\n",
+            "2026-01-05T00:15:01Z,R101,22.0\n"]
+    (d / "room_telemetry.csv").write_text(
+        "timestamp_utc,room_id,temperature_c\n" + "".join(rows[i] for i in order))
+    repo = ReplayData(d, use_llm=False)
+    got = repo.get_measurements("room_telemetry.csv", "2026-01-05T00:00:00Z",
+                                "2026-01-05T01:00:00Z", "2026-01-05T01:00:00Z", "R101")
+    assert [r["temperature_c"] for r in got] == [19.0, 20.0, 22.0]   # true chronological order
+    assert repo.get_room_state("R101", "2026-01-05T00:15:01Z")["temperature_c"] == 22.0
+    assert repo.get_room_state("R101", "2026-01-05T00:15:00Z")["temperature_c"] is None

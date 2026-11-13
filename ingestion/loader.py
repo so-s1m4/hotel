@@ -253,9 +253,10 @@ class Series:
                 if ts == ts_list[-1]:
                     # same key second: a duplicate unless the source instants differ
                     # (distinct sub-second readings are both kept) or it is a door log
-                    distinct = isinstance(line, tuple) and line != line_list[-1] and (
-                        line[ts_i] != (line_list[-1][ts_i] if isinstance(line_list[-1], tuple)
-                                       else ts))
+                    prev = line_list[-1]
+                    distinct = line != prev and (
+                        (line[ts_i] if isinstance(line, tuple) else ts)
+                        != (prev[ts_i] if isinstance(prev, tuple) else ts))
                     if not distinct and (filename != "access_log.csv" or line == line_list[-1]):
                         self.duplicates_dropped += 1
                         continue
@@ -268,9 +269,9 @@ class Series:
         for key in unsorted_groups:  # out-of-order rows or several readings in one second
             ts_list, line_list = groups[key]
 
-            def shown(i: int) -> str:  # original (possibly sub-second) instant
+            def shown(i: int) -> datetime:  # original (possibly sub-second) instant
                 row = line_list[i]
-                return row[ts_i] if isinstance(row, tuple) else ts_list[i]
+                return parse_ts(row[ts_i] if isinstance(row, tuple) else ts_list[i])
 
             order = sorted(range(len(ts_list)), key=lambda i: (ts_list[i], shown(i)))
             seen: set[tuple[str, str]] = set()
