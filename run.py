@@ -43,7 +43,7 @@ def main() -> int:
     from engine.decisions import write_decisions
     from engine.insights import generate_insights
     try:
-        building = json.loads((args.data_dir / "building.json").read_text(encoding="utf-8"))
+        building = json.loads((args.data_dir / "building.json").read_text(encoding="utf-8-sig"))
         config = EngineConfig(**json.loads(args.config.read_text(encoding="utf-8"))) if args.config else EngineConfig()
         engine = DecisionEngine(ReplayData(args.data_dir, use_llm=args.llm), building, config)
         records = engine.run()
