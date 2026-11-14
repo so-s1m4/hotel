@@ -33,7 +33,7 @@ for event in repo.iter_events():                     # sorted by (available_at_u
 | `guest_request` | `guest:<request_id>` | request `timestamp_utc` | guest_requests.csv |
 | `operational_event` / `bms_alarm` | `raw:<event_id>` | event `timestamp_utc` | events.jsonl |
 | `booking_created` | `booking:<booking_id>` | `created_utc` | bookings.csv |
-| `roster_update` | `roster:<shift_id>:<status>` | reconstructed plan publication; actual `status_known_utc` for observed changes | staff_roster.csv |
+| `roster_update` | `roster:<shift_id>:<status>` | recorded `status_known_utc` for scheduled shifts and observed changes; absence updates may overwrite a previously published shift at the documented 14-day lead | staff_roster.csv |
 | `work_order_created` | `wo:<id>` | `created_utc` | work_orders.csv |
 | `operational_event` (payload.type `work_order_completed`) | `wo:<id>:resolved` | `completed_utc` only (postponed orders have no status timestamp and stay `open`) | work_orders.csv |
 | `clock_tick` | `tick:<UTC ts>` | every `interval_seconds` in the manifest range | generated (`__simulation_clock__`) |
@@ -48,11 +48,13 @@ a few seconds (machine-specific); with a warm LLM cache it is the same.
   it is always returned as `"unresolved"`. What was actually observed is in
   `observed_state` (`not_arrived|waiting_for_room|checked_in|checked_out|no_show`),
   `observed_room_id`, `observed_checkin_utc`, `observed_checkout_utc`, `evidence`.
-- **Roster:** a shift is visible from a reconstructed publication time 14 days before start.
-  This is a planning assumption supported by every supplied scheduled row, not an
-  observed publication timestamp for absence rows; it is applied uniformly to all shifts. Sick/vacation/out_of_service is applied only from
-  `status_known_utc`; before that the row looks exactly like a normal planned shift.
-  `effective_status_asof` is added. `ONCALL_1` slots are derived from `building.json`
+- **Roster:** a scheduled shift is visible only when its recorded `status_known_utc`
+  has arrived; a missing timestamp stays unknown and the shift is withheld from
+  available capacity. Absence rows overwrite a previously published shift at the
+  documented 14-day lead (a planning assumption for the supplied roster), while
+  sick/vacation/out_of_service is applied only from its recorded `status_known_utc`.
+  Before then the row looks like the previously planned shift. `effective_status_asof`
+  is added. `ONCALL_1` slots are derived from `building.json`
   (15:30–22:00 local, DST-aware) and marked `simulated_assumption: true`.
 - **Work orders:** at creation `status="open"`, `completed_utc=None` and `summary=""`
   for every order type (summaries are written after the fact; nothing in the source

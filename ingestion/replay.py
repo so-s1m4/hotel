@@ -96,11 +96,11 @@ class ReplayData:
 
     # ------------------------------------------------------------- events
     def iter_events(self) -> Iterator[NormalizedEventV1]:
-        """All normalized events sorted by (available_at_utc, event_id)."""
+        """Independent normalized snapshots sorted by (available_at_utc, event_id)."""
         if self._events_cache is None:
             from .events import build_normalized_events
             self._events_cache = build_normalized_events(self)
-        return iter(self._events_cache)
+        return (event.model_copy(deep=True) for event in self._events_cache)
 
     def get_events(self, start_utc: str, end_utc: str, as_of_utc: str,
                    room_id: str | None = None,
@@ -135,7 +135,7 @@ class ReplayData:
         lo, hi = bisect_left(idx["available_ts"], start), bisect_right(idx["available_ts"], end)
         result = []
         for position in range(lo, hi):
-            out = deepcopy(public_event(idx["available"][position]))
+            out = public_event(idx["available"][position])
             out["available_at_utc"] = fmt_ts(idx["available_ts"][position])
             result.append(out)
         return result
@@ -303,6 +303,11 @@ class ReplayData:
     def _shift_view(self, row: dict, as_of: str) -> dict[str, Any] | None:
         status, known = row.get("status"), row.get("status_known_utc")
         start = row.get("start_utc")
+        # A scheduled row without a recorded publication timestamp is not
+        # verified capacity. Do not manufacture a timestamp from the usual
+        # 14-day planning pattern; only absence updates use that overwrite rule.
+        if status == "scheduled" and known is None:
+            return None
         published = known
         if status != "scheduled" and start is not None:
             # absence rows overwrite a shift that was published like all the others
@@ -420,10 +425,8 @@ class ReplayData:
 
 
 def public_event(ev: dict) -> dict[str, Any]:
-    """Copy of a raw event with its original source instant (sub-second precision)."""
-    out = dict(ev)
-    if "source_fields" in out:  # nested original values: never share with the cache
-        out["source_fields"] = deepcopy(out["source_fields"])
+    """Deep copy of a raw event with its original source instant (sub-second precision)."""
+    out = deepcopy(ev)
     available = out.pop("_available_ts", None)
     if available is not None:
         out["available_at_utc"] = available
