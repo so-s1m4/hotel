@@ -18,7 +18,7 @@ from engine.detectors.logistics import LogisticsDetector
 from engine.detectors.optimization import OptimizationDetector
 from engine.detectors.guest_services import GuestServicesDetector
 from engine.executor import MockExecutor
-from engine.resources import ResourceCalendar
+from engine.resources import ResourceCalendar, canonical_work_role
 from engine.notifications import NotificationLedger
 from engine.safety import SafetyViolation, asset_ids, validate_safety
 
@@ -489,9 +489,11 @@ class DecisionEngine:
                 completed = any(
                     instant(end) >= instant(stamp)
                     and (worker is None or resource == worker
-                         or (resource is None and target is not None and completed_role == role))
+                         or (resource is None and target is not None
+                             and canonical_work_role(completed_role) == canonical_work_role(role)))
                     and (target is None or room == target)
-                    and (completed_role is None or role == completed_role)
+                    and (completed_role is None
+                         or canonical_work_role(role) == canonical_work_role(completed_role))
                     for (worker, target, completed_role), end in self._observed_completions.items())
                 if completed:
                     continue
@@ -499,7 +501,9 @@ class DecisionEngine:
                 # New actual work supersedes incompatible proposed jobs, with an explicit trace.
                 conflicting = set()
                 for worker, reservations in self.calendar.iter_reservations():
-                    if worker == resource or (resource is None and self.calendar.resource_roles.get(worker) == starts[kind]):
+                    if worker == resource or (resource is None
+                            and canonical_work_role(self.calendar.resource_roles.get(worker))
+                            == canonical_work_role(starts[kind])):
                         conflicting.update(r[2] for r in reservations if instant(r[1]) > instant(now))
                 conflicting.update(r[2] for r in self.calendar.room_jobs(room) if instant(r[1]) > instant(now))
                 for decision_id in sorted(conflicting):

@@ -5,6 +5,15 @@ from math import isfinite
 from engine.core import instant, utc, VIENNA
 
 
+def canonical_work_role(role: str | None) -> str | None:
+    """Map the on-call housekeeping subtype to the general human cleaning role.
+
+    Keep this normalization at activity matching boundaries; resource capability
+    identities remain distinct for scheduling and safety checks.
+    """
+    return "cleaner" if role == "on_call_housekeeping" else role
+
+
 def scheduled(slot: dict, now: str) -> bool:
     effective = slot.get("effective_status_asof")
     if effective is not None:
@@ -55,14 +64,17 @@ class ResourceCalendar:
         if not (resource or room):
             raise ValueError("Observed completion needs a resource or room")
         role = role or (self.resource_roles.get(resource) if resource else None)
+        matching_role = canonical_work_role(role)
         for key, jobs in list(self.observed_busy.items()):
             self.observed_busy[key] = {
                 event_id: job for event_id, job in jobs.items()
                 if not ((resource is None or job["resource_id"] == resource
                          or (job["resource_id"] is None and room is not None
-                             and role is not None and job.get("role") == role))
+                             and matching_role is not None
+                             and canonical_work_role(job.get("role")) == matching_role))
                         and (room is None or job["room_id"] == room)
-                        and (role is None or job.get("role") in {None, role})
+                        and (matching_role is None
+                             or canonical_work_role(job.get("role")) in {None, matching_role})
                         and instant(job["start_utc"]) <= end)
             }
             if not self.observed_busy[key]:
@@ -96,7 +108,8 @@ class ResourceCalendar:
         if self.observed_busy.get(resource):
             return False
         role = self.resource_roles.get(resource)
-        if role and any(job["resource_id"] is None and job.get("role") == role
+        if role and any(job["resource_id"] is None
+                        and canonical_work_role(job.get("role")) == canonical_work_role(role)
                         for jobs in self.observed_busy.values() for job in jobs.values()):
             return False
         for collection in (self.reservations, self.tentative_reservations):
