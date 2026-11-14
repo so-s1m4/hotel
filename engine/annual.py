@@ -14,7 +14,7 @@ from engine.core import instant, number, VIENNA
 
 
 def rows(root, name):
-    with (root/name).open(encoding="utf-8", newline="") as stream:
+    with (root/name).open(encoding="utf-8-sig", newline="") as stream:
         yield from csv.DictReader(stream)
 
 
@@ -25,8 +25,8 @@ def analyze_dataset(data_dir: str | Path) -> dict:
     rejects invalid, naive or non-UTC timestamps when used in these calculations.
     """
     root = Path(data_dir)
-    manifest = json.loads((root/"manifest.json").read_text(encoding="utf-8"))
-    building = json.loads((root/"building.json").read_text(encoding="utf-8"))
+    manifest = json.loads((root/"manifest.json").read_text(encoding="utf-8-sig"))
+    building = json.loads((root/"building.json").read_text(encoding="utf-8-sig"))
     rooms = {r["id"]: r for r in building["building"]["rooms"]}
     low, high = building["constraints"]["occupied_comfort_c"]
     timelines = defaultdict(list)
@@ -34,7 +34,7 @@ def analyze_dataset(data_dir: str | Path) -> dict:
     checkout = {}
     active_bookings = {}
     turnaround = []
-    with (root/"events.jsonl").open(encoding="utf-8") as stream:
+    with (root/"events.jsonl").open(encoding="utf-8-sig") as stream:
         events = sorted((json.loads(line) for line in stream if line.strip()), key=lambda e: (instant(e["timestamp_utc"]), e["event_id"]))
     for e in events:
         event_counts[e["type"]] += 1
