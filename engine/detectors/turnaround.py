@@ -116,7 +116,23 @@ class TurnaroundDetector:
                     source_refs + state.get("evidence", []))
                 result.resolved.add(key)
                 continue
-            waiting = request.payload.get("type") == "arrival_waiting_room" or request.payload.get("request_type") == "waiting_for_room"
+            observed_waiting = request.event_type == "operational_event" and request.payload.get("type") == "arrival_waiting_room"
+            extraction = request.extraction
+            uncertainty = set(extraction.uncertain_fields) if extraction else set()
+            # Offline source labels retain their explicit metadata-priority
+            # policy; they are not evidence that the guest is observed waiting.
+            # A failed model call or semantic contradiction cannot use it.
+            offline_label = bool(extraction and extraction.method == "source_label" and (
+                uncertainty <= {"requested_time_utc", "details"}
+                or "offline_mode" in uncertainty and uncertainty <= {
+                    "requested_time_utc", "semantic_details", "offline_mode"}))
+            extracted_intents = request.payload.get("intents")
+            verified_extraction = bool(extraction and extraction.method == "llm" and not extraction.needs_review
+                and isinstance(extracted_intents, list) and extracted_intents
+                and all(isinstance(i, dict) and i.get("needs_review") is False for i in extracted_intents))
+            waiting = observed_waiting or (request.event_type == "guest_request"
+                and request.payload.get("request_type") == "waiting_for_room"
+                and (verified_extraction or offline_label))
             desired = None
             intents = request.payload.get("intents")
             text = request.payload.get("original_text")

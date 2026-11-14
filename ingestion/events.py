@@ -48,6 +48,15 @@ def source_label_intents(record: dict, method: str = "source_label",
     intent = GuestIntentV1(intent=label if known else "unknown", needs_review=True,
                            details={"source": "request_type"})
     uncertain = ["requested_time_utc", "details"] + ([] if known else ["intent"])
+    try:
+        from .request_polarity import declined_intents
+        declined = declined_intents(record.get("text"), record.get("language"))
+        if label in declined or label == "waiting_for_room" and "early_checkin" in declined:
+            uncertain.append("semantic_negation")
+    except Exception:
+        # This path also handles a broken optional parser. Unavailable semantic
+        # checks must not make metadata look like verified immediate priority.
+        uncertain.append("semantic_validation_unavailable")
     meta = ExtractionMetaV1(method=method, model_name=model_name, needs_review=True,
                             uncertain_fields=uncertain)
     return [intent.model_dump()], meta

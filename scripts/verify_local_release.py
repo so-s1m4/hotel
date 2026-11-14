@@ -153,11 +153,12 @@ def worker(config, profile, output):
     def inc(name):
         with lock:
             counters[name] += 1
+            return counters[name]
 
     def tracked_call(*args, **kwargs):
-        inc('transport_attempts')
+        sequence = inc('transport_attempts')
         started = time.perf_counter()
-        trace = {'sequence': counters['transport_attempts']}
+        trace = {'sequence': sequence}
         try:
             messages = args[0] if args else kwargs['messages']
             record = json.loads(messages[1]['content'])['guest_record']
@@ -234,6 +235,19 @@ def worker(config, profile, output):
     return result
 
 
+def profile_verified(row):
+    """One shared fail-closed predicate for fail-fast and final verification."""
+    run_meta, counts, validation = row.get('run', {}), row.get('counts', {}), row.get('validation', {})
+    return (row.get('status') == 'complete' and run_meta.get('status') == 'replay_complete'
+          and run_meta.get('events', 0) > 0 and run_meta.get('safety_rejections') == 0
+          and validation.get('valid') is True and validation.get('error_count') == 0
+          and counts.get('guest_events', 0) > 0 and counts.get('method_llm') == counts.get('guest_events')
+          and counts.get('expected_guest_events') == counts.get('guest_events')
+          and counts.get('transport_attempts') == counts.get('guest_events')
+          and all(counts.get(k) == 0 for k in ('transport_errors', 'cache_hits', 'method_fallback', 'method_source_label', 'method_missing'))
+          and isinstance(counts.get('review_events'), int))
+
+
 def gate(report):
     """Fail closed on missing evidence; review/quality is deliberately separate."""
     failures = []
@@ -251,17 +265,7 @@ def gate(report):
     if not report.get('model_before') or not report.get('model_after') or not same_model(report['model_before'], report['model_after']):
         failures.append('model_identity_missing_or_changed')
     for profile in ('quickstart', 'dev'):
-        row = report.get('profiles', {}).get(profile, {})
-        run_meta, counts, validation = row.get('run', {}), row.get('counts', {}), row.get('validation', {})
-        ok = (row.get('status') == 'complete' and run_meta.get('status') == 'replay_complete'
-              and run_meta.get('events', 0) > 0 and run_meta.get('safety_rejections') == 0
-              and validation.get('valid') is True and validation.get('error_count') == 0
-              and counts.get('guest_events', 0) > 0 and counts.get('method_llm') == counts.get('guest_events')
-              and counts.get('expected_guest_events') == counts.get('guest_events')
-              and counts.get('transport_attempts') == counts.get('guest_events')
-              and all(counts.get(k) == 0 for k in ('transport_errors', 'cache_hits', 'method_fallback', 'method_source_label', 'method_missing'))
-              and isinstance(counts.get('review_events'), int))
-        if not ok:
+        if not profile_verified(report.get('profiles', {}).get(profile, {})):
             failures.append(profile + '_evidence_incomplete_or_failed')
     return failures
 
@@ -270,8 +274,8 @@ def verify(config, execute=False):
     endpoint = loopback_endpoint(config['endpoint'])
     if not isinstance(config['model'], str) or not config['model'].strip():
         raise ValueError('Model is required')
-    if config['workers'] != 1 or not math.isfinite(config['timeout_seconds']) or not 0.1 <= config['timeout_seconds'] <= 60 or not 1 <= config['max_tokens'] <= 16384:
-        raise ValueError('Use one worker, timeout 0.1..60 and token cap 1..16384')
+    if type(config['workers']) is not int or config['workers'] not in (1, 6) or not math.isfinite(config['timeout_seconds']) or not 0.1 <= config['timeout_seconds'] <= 60 or not 1 <= config['max_tokens'] <= 16384:
+        raise ValueError('Use 1 or 6 workers, timeout 0.1..60 and token cap 1..16384')
     config = dict(config, endpoint=endpoint)
     roots = {k: Path(v).resolve() for k, v in config['datasets'].items()}
     if set(roots) != {'quickstart', 'dev'} or roots['quickstart'] == roots['dev']:
@@ -317,6 +321,8 @@ def verify(config, execute=False):
             if config['backend'] == 'ollama' and not observed['loaded_at_probe']:
                 raise ValueError('No matching running model was observed after live replay')
             write_json(report_path, report)
+            if not profile_verified(report['profiles'][profile]):
+                break  # Never spend a Dev run after failed Quickstart evidence.
         report['model_after'] = model_identity(config)
         report['inputs_after'] = {k: tree_hashes(v) for k, v in roots.items()}
         report['sources_after'] = source_hashes()
@@ -347,6 +353,8 @@ def main(argv=None):
     parser.add_argument('--response-format', choices=['json_object', 'json_schema'], default='json_schema')
     parser.add_argument('--timeout-seconds', type=float, default=30)
     parser.add_argument('--max-tokens', type=int, default=1024)
+    parser.add_argument('--workers', type=int, choices=(1, 6), default=1,
+                        help='1 by default; 6 is an opt-in batching trial, not yet validated')
     parser.add_argument('--execute', action='store_true')
     parser.add_argument('--worker', choices=['quickstart', 'dev'], help=argparse.SUPPRESS)
     parser.add_argument('--worker-config', type=Path, help=argparse.SUPPRESS)
@@ -362,7 +370,7 @@ def main(argv=None):
                   'output': str(args.output), 'model': args.model, 'endpoint': args.endpoint,
                   'backend': args.backend, 'model_manifest': str(args.model_manifest) if args.model_manifest else None,
                   'engine_config': str(args.engine_config.resolve()) if args.engine_config else None,
-                  'workers': 1, 'timeout_seconds': args.timeout_seconds, 'max_tokens': args.max_tokens,
+                  'workers': args.workers, 'timeout_seconds': args.timeout_seconds, 'max_tokens': args.max_tokens,
                   'generation_profile': args.generation_profile, 'response_format': args.response_format}
         report = verify(config, args.execute)
     except (OSError, ValueError, TypeError, KeyError) as exc:

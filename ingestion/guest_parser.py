@@ -35,7 +35,7 @@ from ingestion.request_polarity import declined_intents
 __all__ = ["parse_request", "parse_request_full", "parse_requests_batch"]
 
 LOGGER = logging.getLogger(__name__)
-PARSER_VERSION = "1.2.4"  # explicit named-zone phrases remain unknown, not Vienna
+PARSER_VERSION = "1.2.5"  # source clock grammar and declined-service review guards
 PROMPT_VERSION = "guest-semantics-v2"
 MAX_RESPONSE_BYTES = 2_000_000
 MAX_INTENTS = 32
@@ -210,15 +210,24 @@ def _known_context(record: Mapping[str, Any], context: Mapping[str, Any]) -> tup
 
 def _fallback(record: Mapping[str, Any], method: str, reason: str,
               model: str | None = None) -> tuple[list[dict], ExtractionMetaV1]:
-    label = record.get("request_type")
-    label = label if isinstance(label, str) and label in _INTENTS else "unknown"
+    source_label = record.get("request_type")
+    label = source_label if isinstance(source_label, str) and source_label in _INTENTS else "unknown"
+    uncertain = {"requested_time_utc", "semantic_details", reason}
+    # Falling back to metadata must not erase an explicit source refusal. The
+    # waiting label is an arrival-priority hint, not proof of an observed wait.
+    try:
+        declined = declined_intents(record.get("text"), record.get("language"))
+        if label in declined or source_label == "waiting_for_room" and "early_checkin" in declined:
+            uncertain.add("semantic_negation")
+    except Exception:
+        uncertain.add("semantic_validation_unavailable")
     # Source labels are metadata, not a statement certified by a model quote.
     item = GuestIntentV1(intent=label, requested_time_utc=None,
                          requested_time_text=None, evidence_quote=None,
                          details={}, needs_review=True)
     return [item.model_dump(mode="json")], ExtractionMetaV1(
         method=method, model_name=model or None, needs_review=True,
-        uncertain_fields=sorted({"requested_time_utc", "semantic_details", reason}),
+        uncertain_fields=sorted(uncertain),
     )
 
 
@@ -331,6 +340,21 @@ _UNSUPPORTED_ZONES = r"(?:EST|EDT|PST|PDT|CST|CDT|MST|MDT|BST|IST|EET|EEST|JST|K
 _IANA_ZONE = r"\b(?:Africa|America|Antarctica|Arctic|Asia|Atlantic|Australia|Europe|Indian|Pacific|Etc)/[A-Za-z_+-]+(?:/[A-Za-z_+-]+)?\b"
 
 
+_DATE_AFTER_GERMAN_AM = r"(?:20\d{2}-\d{2}-\d{2}|\d{1,2}[./]\d{1,2}[./]20\d{2})(?!\d)"
+
+
+def _german_am_date(suffix: str, language: str) -> bool:
+    # Lowercase 'am' followed immediately by an explicit date is the German
+    # preposition, not an AM meridiem. Uppercase/dotted AM remains explicit.
+    return language == "de" and bool(re.match(r"\s+am\s+"+_DATE_AFTER_GERMAN_AM, suffix))
+
+
+def _clock_text_without_german_date_preposition(text: str, language: str) -> str:
+    if language != "de":
+        return text
+    return re.sub(r"(?<=\d)\s+am(?=\s+"+_DATE_AFTER_GERMAN_AM+r")", " ", text)
+
+
 def _clock(text: str) -> tuple[time | None, bool]:
     """Only a quoted clock, never a fabricated representative of a range."""
     folded = _fold(text)
@@ -344,7 +368,7 @@ def _clock(text: str) -> tuple[time | None, bool]:
             folded = re.sub(pattern, " ", folded)
     if _VAGUE_TIME.search(folded) or re.search(r"\d{1,2}:\d{2}\s*[-–—]\s*\d", folded):
         return None, approximate
-    if re.search(r"[+-]\d{1,2}[:h]\d{2}|\d{1,2}[:h]\d{2}[.:]\d", folded):
+    if re.search(r"[+\-−]\s*\d{1,2}\s*[:h]\s*\d{2}|\d{1,2}[:h]\d{2}[.:]\d", folded):
         return None, approximate  # unsupported sign/seconds/fraction, never truncate
     matches = list(re.finditer(r"(?<!\d)([01]?\d|2[0-3])[:h]([0-5]\d)(?!\d)\s*(a\.?m\.?|p\.?m\.?)?", folded))
     values: set[tuple[int, int]] = set()
@@ -585,7 +609,23 @@ def _surrounding_time_qualifiers(quoted: str, evidence: str, original: str, *, l
         suffix = _fold(original[end:end + 90])
         # Read nearby grammatical qualifiers, not a different clause elsewhere
         # in the message (e.g. "after checkout, can we arrive at 13:00?").
-        if re.search(r"\b" + qualifier + r"\s+(?:(?:about|around|approximately|etwa|circa|environ)\s+)?$", prefix):
+        qualifier_match = re.search(r"\b" + qualifier + r"\s+(?:(?:about|around|approximately|etwa|circa|environ)\s+)?$", prefix)
+        spanish_exact = []
+        if language == "es":
+            # Exempt only explicit AT-clock grammar, not every occurrence of
+            # antes/despues. Bare thresholds and de/date variants stay bounded.
+            for source_clock in re.finditer(_CLOCK_TOKEN, original, re.I):
+                if source_clock.end() <= start or source_clock.start() >= end:
+                    continue
+                clock_prefix = _fold(original[max(0, source_clock.start() - 90):source_clock.start()])
+                exact = bool(re.search(r"\b(?:antes|despues)\s+a\s+las?\s+$", clock_prefix))
+                spanish_exact.append(exact)
+                threshold = re.search(r"\b(?:antes|despues)(?:\s+(?:de|del|las?|a|hoy|manana|pasado|aproximadamente|sobre))*\s+$", clock_prefix)
+                if threshold and not exact:
+                    bound = True
+        exempt_spanish_at = (language == "es" and spanish_exact and all(spanish_exact)
+                            and qualifier_match and re.match(r"(?:antes|despues)\b", qualifier_match.group()))
+        if qualifier_match and not exempt_spanish_at:
             bound = True
         alternatives = r"(?:or|oder|ou|o|of|oppure)"
         if re.match(r"\s*[-–—]\s*\d", suffix) or re.match(r"\s*(?:to|until|bis|and|et|y|en|or|oder|ou|o|of|oppure)\s+\d{1,2}[:h]", suffix):
@@ -598,7 +638,8 @@ def _surrounding_time_qualifiers(quoted: str, evidence: str, original: str, *, l
         raw_suffix = original[end:end + 90]
         if re.match(r"\s*:\s*\d", raw_suffix):
             bound = True  # omitted seconds are not an exact minute request
-        source_period = re.match(r"\s*("+_MERIDIEM+r")(?!\w)", suffix)
+        source_period = (None if _german_am_date(raw_suffix, language) else
+                         re.match(r"\s*("+_MERIDIEM+r")(?!\w)", suffix))
         period = source_period.group(1).replace(".", "") if source_period else None
         periods.add(period)
         if source_period:
@@ -612,7 +653,7 @@ def _surrounding_time_qualifiers(quoted: str, evidence: str, original: str, *, l
             else:
                 zones.add(name)
         elif (re.match(r"\s*(?:"+_UNSUPPORTED_ZONES+r")\b", raw_suffix)
-              or re.match(r"\s*[+-]\s*\d{1,2}(?::?\d{2})?", raw_suffix)
+              or re.match(r"\s*[+\-−]\s*\d{1,2}(?::?\d{2})?", raw_suffix)
               or re.match(r"\s*"+_IANA_ZONE, raw_suffix, re.I)):
             bound = True
     if len(zones) > 1 or len(source_days) > 1 or len(periods) > 1 or not grounded:
@@ -631,7 +672,8 @@ def _resolve_time(item: GuestIntentV1, record: Mapping[str, Any], safe: Mapping[
     bound, nearby_approximate, source_zone, source_period = _surrounding_time_qualifiers(
         quoted, item.evidence_quote or "", str(record.get("text") or ""),
         language=language, message_time=message_time)
-    clock_text = quoted + (" " + source_period if source_period else "")
+    clock_text = _clock_text_without_german_date_preposition(quoted, language)
+    clock_text += " " + source_period if source_period else ""
     clock, approximate = _clock(clock_text)
     approximate = approximate or nearby_approximate
     if bound:

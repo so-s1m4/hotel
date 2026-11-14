@@ -239,3 +239,127 @@ def test_worker_goes_through_real_cli_ingestion_and_validator(config, tmp_path, 
     event = json.loads((tmp_path / 'worker/guest_events.jsonl').read_text())
     assert event['event_type'] == 'guest_request'
     assert event['source']['record_id'] == trace['request_id']
+
+
+@pytest.mark.parametrize('failure', ['freshness', 'accounting', 'validation', 'rejections', 'missing_review'])
+def test_bad_quickstart_evidence_stops_before_dev(config, monkeypatch, failure):
+    called = []
+    monkeypatch.setattr(release, 'model_identity', lambda cfg: {'digest': 'a', 'loaded_at_probe': True})
+    def subprocess_run(command, **kwargs):
+        profile = command[command.index('--worker') + 1]
+        called.append(profile)
+        row = complete_profile()
+        if failure == 'freshness': row['counts']['cache_hits'] = 1
+        elif failure == 'accounting': row['counts']['method_llm'] = 0
+        elif failure == 'validation': row['validation']['valid'] = False
+        elif failure == 'rejections': row['run']['safety_rejections'] = 1
+        else: del row['counts']['review_events']
+        destination = Path(config['output']) / profile; destination.mkdir()
+        release.write_json(destination / 'worker.json', row)
+        return SimpleNamespace(returncode=0)
+    monkeypatch.setattr(release.subprocess, 'run', subprocess_run)
+    result = release.verify(config, execute=True)
+    assert called == ['quickstart']
+    assert 'dev' not in result['profiles']
+    assert result['status'] == 'verification_failed'
+    assert 'quickstart_evidence_incomplete_or_failed' in result['failures']
+    assert release.read_json(Path(config['output']) / 'verification.json')['status'] == 'verification_failed'
+
+
+@pytest.mark.parametrize('workers', [1, 6])
+def test_cli_forwards_explicit_workers_without_execution(config, monkeypatch, workers):
+    selected = []
+    def planned(cfg, execute=False):
+        selected.append((cfg, execute))
+        return {'status': 'planned', 'model_quality': 'not_certified'}
+    monkeypatch.setattr(release, 'verify', planned)
+    assert release.main(['--quickstart', config['datasets']['quickstart'], '--dev', config['datasets']['dev'],
+        '--output', config['output'], '--model', config['model'], '--workers', str(workers)]) == 0
+    assert selected[0][0]['workers'] == workers and selected[0][1] is False
+
+
+@pytest.mark.parametrize('workers', [0, 2, True, 6.0])
+def test_unsupported_worker_counts_fail_before_model_or_output(config, workers):
+    config['workers'] = workers
+    with pytest.raises(ValueError): release.verify(config)
+    assert not Path(config['output']).exists()
+
+
+@pytest.mark.parametrize('workers', [1, 6])
+def test_supported_worker_counts_plan_with_same_defaults(config, workers):
+    config['workers'] = workers
+    result = release.verify(config)
+    assert result['status'] == 'planned' and result['config']['workers'] == workers
+
+
+@pytest.mark.parametrize('workers', [1, 6])
+def test_concurrent_counter_allocation_and_raw_request_hash_correlation(config, tmp_path, monkeypatch, workers):
+    from concurrent.futures import ThreadPoolExecutor
+    import hashlib
+    import os
+    import sys
+    import threading
+    from ingestion import guest_parser, replay
+    import run
+    import engine.validation
+    from collections import Counter
+    records = [{'request_id': 'ROW-' + str(i), 'text': 'request ' + str(i)} for i in range(6)]
+    local = threading.local()
+    class MonitorLock:
+        def __init__(self): self.lock = threading.Lock()
+        def __enter__(self): self.lock.acquire(); local.held = True
+        def __exit__(self, *args): local.held = False; self.lock.release()
+    class GuardedCounter(Counter):
+        def __getitem__(self, name):
+            # Detect the original unsafe sequence snapshot independently of
+            # thread scheduling: shared reads during transport belong in lock.
+            if name == 'transport_attempts' and threading.current_thread() is not threading.main_thread():
+                assert getattr(local, 'held', False), 'Concurrent sequence read outside counter lock'
+            return super().__getitem__(name)
+    class Repo:
+        def __init__(self, *args, **kwargs):
+            self.ds = SimpleNamespace(guest_requests=[dict(r, timestamp_utc='2026-01-06T12:00:00Z') for r in records])
+        def iter_events(self):
+            for record in records:
+                yield SimpleNamespace(event_type='guest_request', extraction=SimpleNamespace(method='llm', needs_review=False),
+                    payload={'intents': []}, model_dump_json=lambda r=record: json.dumps(r))
+    monkeypatch.setattr(replay, 'ReplayData', Repo)
+    barrier = threading.Barrier(6) if workers == 6 else None
+    def provider(messages, settings):
+        if barrier: barrier.wait(timeout=5)
+        return json.dumps({'intents': [], 'fixture_id': json.loads(messages[1]['content'])['guest_record']['request_id']})
+    monkeypatch.setattr(guest_parser, '_call_llm', provider)
+    monkeypatch.setattr(release, 'Lock', MonitorLock)
+    monkeypatch.setattr(release, 'Counter', GuardedCounter)
+    def simulated_cli():
+        assert os.environ['GUEST_PARSER_WORKERS'] == str(workers)
+        repo = replay.ReplayData('fixture')
+        def invoke(record):
+            return guest_parser._call_llm([{'role': 'system', 'content': 'fixture'},
+                {'role': 'user', 'content': json.dumps({'guest_record': record})}], {})
+        with ThreadPoolExecutor(max_workers=workers) as pool: list(pool.map(invoke, records))
+        list(repo.iter_events())
+        output = Path(sys.argv[sys.argv.index('--out') + 1]); output.write_text('')
+        Path(sys.argv[sys.argv.index('--audit') + 1]).write_text('')
+        output.with_name(output.stem + '_rejections.jsonl').write_text('')
+        print(json.dumps({'status': 'replay_complete', 'events': 6, 'decisions': 0, 'safety_rejections': 0}))
+        return 0
+    monkeypatch.setattr(run, 'main', simulated_cli)
+    monkeypatch.setattr(engine.validation, 'validate_outputs', lambda *a: {'valid': True, 'error_count': 0})
+    config['workers'] = workers
+    output = tmp_path / 'worker-instrumentation'
+    result = release.worker(config, 'quickstart', output)
+    traces = [json.loads(line) for line in (output / 'model_responses.jsonl').read_text().splitlines()]
+    assert sorted(row['sequence'] for row in traces) == list(range(1, 7))
+    assert {row['request_id'] for row in traces} == {r['request_id'] for r in records}
+    assert result['counts']['guest_events'] == result['counts']['method_llm'] == result['counts']['transport_attempts'] == 6
+    assert result['counts']['transport_errors'] == 0
+    for trace in traces:
+        record = next(r for r in records if r['request_id'] == trace['request_id'])
+        canonical = json.dumps(record, sort_keys=True, ensure_ascii=False, separators=(',', ':'))
+        assert trace['record_sha256'] == hashlib.sha256(canonical.encode()).hexdigest()
+        assert json.loads(trace['raw_response'])['fixture_id'] == record['request_id']
+        messages = [{'role': 'system', 'content': 'fixture'},
+                    {'role': 'user', 'content': json.dumps({'guest_record': record})}]
+        wire = json.dumps(messages, sort_keys=True, ensure_ascii=False, separators=(',', ':'))
+        assert trace['messages_sha256'] == hashlib.sha256(wire.encode()).hexdigest()

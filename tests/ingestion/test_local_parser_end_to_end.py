@@ -124,7 +124,7 @@ def test_structured_local_semantics_do_not_grant_consent_approval_or_room_releas
 
 
 @pytest.mark.parametrize('failure',['timeout','invalid_json'])
-def test_optional_model_failure_preserves_full_real_normalized_stream_and_replay(local_dataset,monkeypatch,failure):
+def test_optional_model_failure_preserves_stream_and_fails_closed_on_guest_priority(local_dataset,monkeypatch,failure):
     root,building=local_dataset
     baseline_repo=ReplayData(root,use_llm=False)
     baseline=list(iter_normalized_events(baseline_repo))
@@ -152,7 +152,17 @@ def test_optional_model_failure_preserves_full_real_normalized_stream_and_replay
     engine=DecisionEngine(repo,building)
     actual=engine.run()
     expected=DecisionEngine(baseline_repo,building).run()
-    assert [row.model_dump() for row in actual]==[row.model_dump() for row in expected]
+    # Explicit offline metadata priority and a failed model are different
+    # policies. A failed extraction must not turn WAIT into a cleaning job.
+    assert any(row.action=='schedule_cleaning' for row in expected)
+    assert not any(row.action in {'schedule_cleaning','release_room','dispatch_robot','request_inspection'}
+                   for row in actual)
+    assert any(row.issue_type=='room_turnaround' and row.action=='notify_guest'
+               and 'unverified' in row.reason for row in actual)
+    assert [row.model_dump() for row in actual if row.issue_type!='room_turnaround']==[
+        row.model_dump() for row in expected if row.issue_type!='room_turnaround']
+    assert not any(engine.calendar.reservations.values())
+    assert not any(engine.calendar.tentative_reservations.values())
     assert engine.event_count==len(events)
     assert not engine.rejections
     assert all(not row['effects_applied'] for row in engine.executor.audit)
