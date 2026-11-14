@@ -227,35 +227,64 @@ def render_report(a: dict) -> str:
     m, t, w, e = (a[k] for k in ("metadata", "temperature", "water", "energy"))
     occupied = t.get("occupied_samples", 0)
     cold, hot = t.get("cold_samples", 0), t.get("hot_samples", 0)
-    percent = 100*cold/occupied if occupied else 0
+    cold_rate = f"{100*cold/occupied:.2f}%" if occupied > 0 else "rate unavailable"
+    temperature_samples, missing_temperature = t.get("samples", 0), t.get("missing_temperature", 0)
+    matched_water = w.get("complete_main_room_intervals", 0)
+    residual = w.get("median_complete_interval_residual_liters")
+    water_supported = matched_water > 0 and residual is not None
+    water_value = f"{residual:.2f} L/15 min" if water_supported else "unavailable"
+    energy_samples, valid_energy = e.get("samples", 0), e.get("valid_samples", 0)
+    priced_energy = e.get("cost_covered_samples", 0)
+    energy_values = (f"observed building load {e['building_load_kwh']:,.1f} kWh, HVAC {e['hvac_electric_kwh']:,.1f} kWh, PV {e['pv_kwh']:,.1f} kWh"
+                     if valid_energy > 0 else "observed energy totals unavailable")
+    cost = e.get("grid_import_cost_eur_observed")
+    cost_value = f"{cost:,.2f} EUR" if priced_energy > 0 and cost is not None else "unavailable"
+    if priced_energy > 0 and priced_energy < valid_energy and cost is not None:
+        cost_value += " (covered subtotal)"
+    pairs, turnaround = a["checkout_cleaning_pairs"], a["observed_checkout_to_cleaning_minutes_median"]
+    turnaround_supported = pairs > 0 and turnaround is not None
+    turnaround_value = f"{turnaround} minutes" if turnaround_supported else "unavailable"
+    comfort_review = (f"Use the {cold:,} cold samples as a review pool, not ground truth."
+                      if occupied > 0 else "No valid occupied-temperature samples support a discomfort review pool in this dataset.")
+    latency_review = (f"measure checkout→human-cleaning latency against the observed {turnaround} minute median"
+                      if turnaround_supported else "collect paired checkout/cleaning observations before defining a latency baseline")
+    water_evidence = (f"The {matched_water:,} matched main/room intervals have a signed median residual of {residual:.2f} L/15 min; this aggregate does not identify usage or loss causes."
+                      if water_supported else "No matched main/room residual observations are available, so these data establish no residual or attribution finding.")
+    if missing_temperature > 0:
+        temperature_evidence = f"The {missing_temperature:,} missing temperature records among {temperature_samples:,} included samples provide an observed telemetry-quality review pool."
+    elif temperature_samples > 0:
+        temperature_evidence = f"No missing temperature values were recorded among {temperature_samples:,} included samples; this does not establish complete telemetry coverage."
+    else:
+        temperature_evidence = "No temperature samples are available to assess missing-record coverage."
     lines = ["# PLATO-40: evidence-based operating and design review", "",
         f"Dataset: **{m['profile']}**, {m['days']} days, `{m['start_utc']}..{m['end_utc']}`.",
         "Retrospective analysis of the fictional synthetic property. This is not a claim about real PLATO buildings or current CLARA capability.",
         "Data credit: PLATO-40 synthetic dataset, Proximata Hackathon '26 – Rhomberg track (CC BY 4.0).", "",
         "## Measured findings", "",
-        f"- Comfort: {occupied:,} valid temperature samples with event-derived occupied state; {cold:,} below the comfort band ({percent:.2f}%), {hot:,} above. Each sample represents a 15-minute observation; these counts are not independent guests or labelled incidents.",
-        f"- Data quality: {t.get('missing_temperature', 0):,} missing temperature samples; {a['telemetry_duplicates_skipped']} duplicate timestamp/room readings skipped; {a['telemetry_out_of_order_skipped']} out-of-order readings excluded. Unknown occupancy is retained, never inferred from motion.",
-        f"- Water: {w.get('complete_main_room_intervals', 0):,} intervals have valid matched readings from the main meter and every room. Median main-minus-room residual is {w.get('median_complete_interval_residual_liters', 0) or 0:.2f} L/15 min. Common areas, irrigation and losses are included; this is **not** measured leakage.",
+        f"- Comfort: {occupied:,} valid temperature samples with event-derived occupied state; {cold:,} below the comfort band ({cold_rate}), {hot:,} above. Each sample represents a 15-minute observation; these counts are not independent guests or labelled incidents.",
+        f"- Data quality: {missing_temperature:,} missing temperature samples among {temperature_samples:,} included rows; {a['telemetry_duplicates_skipped']} duplicate timestamp/room readings skipped; {a['telemetry_out_of_order_skipped']} out-of-order readings excluded. Unknown occupancy is retained, never inferred from motion.",
+        f"- Water: {matched_water:,} intervals have valid matched readings from the main meter and every room. Median main-minus-room residual is {water_value}. Common areas, irrigation and losses are included; this is **not** measured leakage.",
         f"- Water quality: {w.get('room_negative_deltas', 0)} negative room-meter deltas (possible resets or artefacts; not confirmed exchanges) and {w.get('missing_or_invalid_room_samples', 0):,} missing/invalid room-meter samples; negative deltas and gaps are excluded from consumption.",
-        f"- Energy: observed building load {e.get('building_load_kwh', 0):,.1f} kWh, HVAC {e.get('hvac_electric_kwh', 0):,.1f} kWh, PV {e.get('pv_kwh', 0):,.1f} kWh. Observed import cost {e.get('grid_import_cost_eur_observed', 0):,.2f} EUR across {e.get('cost_covered_samples', 0):,} price-covered samples; export revenue is not assumed.",
-        f"- Actual checkout→observed cleaning-completed median: {a['observed_checkout_to_cleaning_minutes_median']} minutes over {a['checkout_cleaning_pairs']:,} paired events. This is not a room-release or service-level guarantee.", "",
+        f"- Energy: {valid_energy:,} of {energy_samples:,} samples are valid; {energy_values}. Observed import cost {cost_value}; {priced_energy:,} of {valid_energy:,} valid energy samples have price coverage. Missing intervals and prices are not imputed; export revenue is not assumed.",
+        f"- Actual checkout→observed cleaning-completed median: {turnaround_value} over {pairs:,} paired events. This is not a room-release or service-level guarantee.", "",
         "### Logistics and staffing observations", ""]
     lines += [f"- `{key}`: {value:,} recorded samples" for key, value in sorted(a["logistics"].items()) if value]
     lines += [f"- `{key}`: {value:,}" for key, value in sorted(a["staffing"].items()) if not key.endswith(":scheduled:shifts")]
     lines += ["", "## CLARA: operating recommendations", "",
-        f"1. Prioritise sustained discomfort in observed occupied rooms, using the {cold:,} cold samples as a review pool, not ground truth. Separate open windows, defrost and sensor gaps before dispatch. Validate thresholds on held-out data and report false positives; never lower occupied comfort to exploit a cheap/expensive tariff.",
-        f"2. Retain availability timestamps, verify staff absence before reallocating jobs, and measure checkout→human-cleaning latency against the observed {a['observed_checkout_to_cleaning_minutes_median']} minute median. Add an explicit inspection/release event rather than treating clean telemetry as authorisation.",
+        f"1. Prioritise sustained discomfort in observed occupied rooms. {comfort_review} Separate open windows, defrost and sensor gaps before dispatch. Validate thresholds on held-out data and report false positives; never lower occupied comfort to exploit a cheap/expensive tariff.",
+        f"2. Retain availability timestamps, verify staff absence before reallocating jobs, and {latency_review}. Add an explicit inspection/release event rather than treating clean telemetry as authorisation.",
         "3. Trigger lead-time-aware waste/restock forecasts, reusing scheduled visits when they precede predicted shortage. Verify actual collection/delivery instead of treating an order or simulated robot task as a physical state change.", "",
         "## PLATO: future-building design recommendations", "",
-        f"1. Instrument common-area water branches and meter-replacement events. The {w.get('complete_main_room_intervals', 0):,} matched main/room intervals show measurable unallocated consumption, but the provided sensors cannot attribute it to irrigation, common use or leakage. Additional submeters address this demonstrated attribution gap; no quantified leak saving is claimed.",
-        f"2. Provide explicit room inspection/release signals and resilient room/gateway telemetry. The {t.get('missing_temperature', 0):,} missing temperature records and separate housekeeping/occupancy semantics demonstrate observability gaps; test store-and-forward and outage reporting before deciding on a hardware retrofit.",
+        f"1. Consider common-area water submeters and meter-replacement records if attribution is needed. {water_evidence} Evaluate instrumentation against matched evidence before committing to a retrofit; no quantified leak saving is claimed.",
+        f"2. Provide explicit room inspection/release signals and resilient room/gateway telemetry. {temperature_evidence} Test store-and-forward and outage reporting before deciding on a hardware retrofit.",
         "3. Investigate thermal variation by orientation with matched area, floor, window and occupancy controls before changing envelope/HVAC design. The exposure table below is descriptive and does not establish a design defect.", "",
         "| Orientation | Occupied samples | Below-band samples | Below-band rate |",
         "|---|---:|---:|---:|"]
     for orientation, counts in sorted(a["temperature_by_orientation"].items()):
         n = counts.get("occupied_samples", 0)
         k = counts.get("cold_samples", 0)
-        lines.append(f"| {orientation} | {n:,} | {k:,} | {100*k/n if n else 0:.2f}% |")
+        rate = f"{100*k/n:.2f}%" if n > 0 else "unavailable"
+        lines.append(f"| {orientation} | {n:,} | {k:,} | {rate} |")
     lines += ["", "## Evidence and reproducibility", "",
         "Source windows are the dataset coverage above. Metrics are in the companion analysis JSON, including per-room exposure and SHA-256 hashes. References:", "",
         "- `room_telemetry.csv` + `events.jsonl`: temperature/occupancy counts, orientation exposure, observed cleaning pairs.",
