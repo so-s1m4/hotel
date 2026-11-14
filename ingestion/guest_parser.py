@@ -35,7 +35,7 @@ from ingestion.request_polarity import declined_intents
 __all__ = ["parse_request", "parse_request_full", "parse_requests_batch"]
 
 LOGGER = logging.getLogger(__name__)
-PARSER_VERSION = "1.2.6"  # source clock grammar and declined-service review guards
+PARSER_VERSION = "1.2.7"  # source clock grammar and declined-service review guards
 PROMPT_VERSION = "guest-semantics-v2"
 MAX_RESPONSE_BYTES = 2_000_000
 MAX_INTENTS = 32
@@ -505,7 +505,7 @@ def _local_time(day: date, clock: time, quoted: str) -> datetime | None:
     # reinterpret them as Vienna or truncate UTC+02 to UTC.
     # Zone abbreviations are matched case-sensitively: French "est", German "ist",
     # English "best"/"most" must not be read as EST/IST/... time zones.
-    if (re.search(r"\b(?:UTC|GMT)\s*[+-]", quoted, re.I)
+    if (re.search(r"\b(?:UTC|GMT)\s*[+\-−]", _fold(quoted), re.I)
             or re.search(r"\b"+_UNSUPPORTED_ZONES+r"\b", quoted)
             or re.search(_IANA_ZONE, quoted, re.I)):
         return None
@@ -615,7 +615,7 @@ def _surrounding_time_qualifiers(quoted: str, evidence: str, original: str, *, l
         for source_clock in re.finditer(_CLOCK_TOKEN, original, re.I):
             if source_clock.end() <= start or source_clock.start() >= end:
                 continue
-            if re.match(r"\s*[+\-−]\s*\d", original[source_clock.end():]):
+            if re.match(r"\s*(?:(?:UTC|GMT)\s*)?[+\-−]\s*\d", _fold(original[source_clock.end():]), re.I):
                 bound = True
         spanish_exact = []
         if language == "es":
@@ -652,15 +652,15 @@ def _surrounding_time_qualifiers(quoted: str, evidence: str, original: str, *, l
         if source_period:
             suffix = suffix[source_period.end():]
             raw_suffix = raw_suffix[source_period.end():]
-        explicit_zone = re.match(r"\s*((?:UTC|GMT)(?:\s*[+-]\s*\d{1,2}(?::?\d{2})?)?|CEST|CET)\b", suffix, re.I)
+        explicit_zone = re.match(r"\s*((?:UTC|GMT)(?:\s*[+\-−]\s*\d{1,2}(?::?\d{2})?)?|CEST|CET)\b", suffix, re.I)
         if explicit_zone:
             name = explicit_zone.group(1).upper()
-            if "+" in name or "-" in name:
+            if any(sign in name for sign in ("+", "-", "−")):
                 bound = True
             else:
                 zones.add(name)
         elif (re.match(r"\s*(?:"+_UNSUPPORTED_ZONES+r")\b", raw_suffix)
-              or re.match(r"\s*[+\-−]\s*\d{1,2}(?::?\d{2})?", raw_suffix)
+              or re.match(r"\s*[+\-−]\s*\d{1,2}(?::?\d{2})?", _fold(raw_suffix))
               or re.match(r"\s*"+_IANA_ZONE, raw_suffix, re.I)):
             bound = True
     if len(zones) > 1 or len(source_days) > 1 or len(periods) > 1 or not grounded:

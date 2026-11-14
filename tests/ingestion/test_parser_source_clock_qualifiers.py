@@ -143,3 +143,33 @@ def test_unrelated_offset_in_another_clause_does_not_attach_to_selected_clock():
     rows, uncertain = interpret(text, '2029-04-16 at 14:25', language='en')
     assert rows[0]['requested_time_utc'] == '2029-04-16T12:25:00Z'
     assert not rows[0]['needs_review'] and not uncertain
+
+
+@pytest.mark.parametrize('zone', ['UTC', 'GMT'])
+@pytest.mark.parametrize('offset', ['−0530', '−07', '− 04:15', '−3:30', '−07 30', '+0630', '＋0930', '－0530'])
+@pytest.mark.parametrize('scope', ['clock', 'clock_zone', 'dated_phrase'])
+def test_prefixed_offset_signs_cannot_be_truncated_to_a_plain_zone(zone, offset, scope):
+    phrase = f'2030-05-12 at 16:40 {zone}{offset}'
+    quote = {'clock': '16:40', 'clock_zone': f'16:40 {zone}{offset}', 'dated_phrase': phrase}[scope]
+    rows, uncertain = interpret(f'Could we check in on {phrase}?', quote, language='en')
+    assert rows[0]['requested_time_utc'] is None and rows[0]['needs_review']
+    assert 'requested_time_utc' in uncertain
+
+
+@pytest.mark.parametrize('zone,day,utc_hour', [
+    ('UTC', '2030-05-12', 16), ('GMT', '2030-01-12', 16),
+    ('CET', '2030-01-12', 15), ('CEST', '2030-05-12', 14),
+])
+@pytest.mark.parametrize('narrow', [True, False])
+def test_supported_plain_zones_remain_exact(zone, day, utc_hour, narrow):
+    phrase = f'{day} at 16:40 {zone}'
+    rows, uncertain = interpret(f'Could we check in on {phrase}?', '16:40' if narrow else phrase, language='en')
+    assert rows[0]['requested_time_utc'] == f'{day}T{utc_hour:02}:40:00Z'
+    assert not rows[0]['needs_review'] and not uncertain
+
+
+def test_unicode_offset_in_an_unrelated_clause_does_not_change_local_request():
+    text = 'Our flight clock is 07:10 UTC−0530. Could we check in on 2030-05-12 at 16:40?'
+    rows, uncertain = interpret(text, '2030-05-12 at 16:40', language='en')
+    assert rows[0]['requested_time_utc'] == '2030-05-12T14:40:00Z'
+    assert not rows[0]['needs_review'] and not uncertain
