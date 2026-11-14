@@ -35,7 +35,7 @@ from ingestion.request_polarity import declined_intents
 __all__ = ["parse_request", "parse_request_full", "parse_requests_batch"]
 
 LOGGER = logging.getLogger(__name__)
-PARSER_VERSION = "1.2.2"  # direct/progressive refusals and multilingual service aliases
+PARSER_VERSION = "1.2.4"  # explicit named-zone phrases remain unknown, not Vienna
 PROMPT_VERSION = "guest-semantics-v2"
 MAX_RESPONSE_BYTES = 2_000_000
 MAX_INTENTS = 32
@@ -322,6 +322,15 @@ _UNRESOLVED_RELATIVE = re.compile(
 )
 
 
+_MERIDIEM = r"(?:a\.?m\.?|p\.?m\.?)"
+_NOON_WORDS = r"(?:noon|midi|mezzogiorno|mediod[ií]a)"
+_MIDNIGHT_WORDS = r"(?:midnight|mitternacht|minuit|mezzanotte|medianoche|middernacht)"
+_CLOCK_TOKEN = (r"(?<!\w)(?:\d{1,2}[:h]\d{2}(?:\s*"+_MERIDIEM+r")?|"
+                r"\d{1,2}\s*(?:uhr|uur|h|"+_MERIDIEM+r")|"+_NOON_WORDS+"|"+_MIDNIGHT_WORDS+r")(?!\w)")
+_UNSUPPORTED_ZONES = r"(?:EST|EDT|PST|PDT|CST|CDT|MST|MDT|BST|IST|EET|EEST|JST|KST|AEST|AEDT|ACST|ACDT|AWST|NZST|NZDT|HST|MSK|WET|WEST)"
+_IANA_ZONE = r"\b(?:Africa|America|Antarctica|Arctic|Asia|Atlantic|Australia|Europe|Indian|Pacific|Etc)/[A-Za-z_+-]+(?:/[A-Za-z_+-]+)?\b"
+
+
 def _clock(text: str) -> tuple[time | None, bool]:
     """Only a quoted clock, never a fabricated representative of a range."""
     folded = _fold(text)
@@ -347,20 +356,18 @@ def _clock(text: str) -> tuple[time | None, bool]:
         if period:
             hour = hour % 12 + (12 if period == "pm" else 0)
         values.add((hour, minute))
-    if not matches:
-        for match in re.finditer(r"(?<!\d)([01]?\d|2[0-3])\s*(uhr|uur|h|a\.?m\.?|p\.?m\.?)(?!\w)", folded):
-            hour = int(match.group(1))
-            suffix = match.group(2).replace(".", "")
-            if suffix in {"am", "pm"}:
-                if not 1 <= hour <= 12:
-                    return None, approximate
-                hour = hour % 12 + (12 if suffix == "pm" else 0)
-            values.add((hour, 0))
-    if not values:
-        if re.search(r"\b(noon|midi|mezzogiorno|mediodia)\b", folded):
-            values.add((12, 0))
-        elif re.search(r"\b(midnight|mitternacht|minuit|mezzanotte|medianoche|middernacht)\b", folded):
-            values.add((0, 0))
+    for match in re.finditer(r"(?<![\d:h])([01]?\d|2[0-3])\s*(uhr|uur|h|a\.?m\.?|p\.?m\.?)(?!\w)", folded):
+        hour = int(match.group(1))
+        suffix = match.group(2).replace(".", "")
+        if suffix in {"am", "pm"}:
+            if not 1 <= hour <= 12:
+                return None, approximate
+            hour = hour % 12 + (12 if suffix == "pm" else 0)
+        values.add((hour, 0))
+    if re.search(r"\b"+_NOON_WORDS+r"\b", folded):
+        values.add((12, 0))
+    if re.search(r"\b"+_MIDNIGHT_WORDS+r"\b", folded):
+        values.add((0, 0))
     return (time(*next(iter(values))) if len(values) == 1 else None), approximate
 
 
@@ -411,6 +418,17 @@ def _source_date_scope(original: str, start: int, end: int, language: str,
         return None
     if start and original[start].isalpha() and (original[start - 1].isalnum() or original[start - 1] == "_"):
         return None
+    if (end < len(original) and original[end - 1].isalnum() and original[end].isalnum()
+            and not (original[end - 1].isdigit() and re.match(
+                r"(?:"+_MERIDIEM+r"|UTC|GMT|CET|CEST)(?!\w)", original[end:], re.I))):
+        return None
+    period_spans = [match for match in re.finditer(_MERIDIEM+r"(?!\w)", original, re.I)
+                    if not match.start() or not original[match.start() - 1].isalpha()]
+    for match in period_spans:
+        if match.start() < start < match.end():
+            return None
+        if match.start() < end < match.end() and original[end:match.end()].strip("."):
+            return None
     # A word boundary is insufficient for "day after tomorrow"/"apres-demain".
     # Keep the complete supported relative expression, including across spaces
     # or hyphens. Folded prefix lengths preserve offsets through normalization.
@@ -425,6 +443,12 @@ def _source_date_scope(original: str, start: int, end: int, language: str,
     boundary = r"[;!?\n]|(?<!\d)\.|\.(?!\d)"
     left, right = 0, len(original)
     for match in re.finditer(boundary, original, re.I):
+        # AM/PM dots are clock punctuation. The last dot may still end a
+        # sentence, but not when an alternative clock or zone follows it.
+        period = next((token for token in period_spans if token.start() <= match.start() < token.end()), None)
+        if period and (match.end() < period.end() or re.match(
+                r"\s*(?:or|oder|ou|o|of|oppure|UTC|GMT|CET|CEST)\b", original[match.end():], re.I)):
+            continue
         if match.end() <= start:
             left = match.end()
         elif match.start() >= end:
@@ -458,7 +482,8 @@ def _local_time(day: date, clock: time, quoted: str) -> datetime | None:
     # Zone abbreviations are matched case-sensitively: French "est", German "ist",
     # English "best"/"most" must not be read as EST/IST/... time zones.
     if (re.search(r"\b(?:UTC|GMT)\s*[+-]", quoted, re.I)
-            or re.search(r"\b(?:EST|EDT|PST|PDT|CST|CDT|MST|MDT|BST|IST|EET|EEST)\b", quoted)):
+            or re.search(r"\b"+_UNSUPPORTED_ZONES+r"\b", quoted)
+            or re.search(_IANA_ZONE, quoted, re.I)):
         return None
     # Round trips distinguish nonexistent spring times and ambiguous fall times.
     candidates: dict[datetime, str | None] = {}
@@ -476,8 +501,46 @@ def _local_time(day: date, clock: time, quoted: str) -> datetime | None:
     return next(iter(candidates)) if len(candidates) == 1 else None
 
 
+_NAMED_ZONE_MARKER = (
+    r"(?:local\s+time\s+(?:in|of|for)\s+|time\s+(?:in|of)\s+|"
+    r"hora(?:\s+local)?\s+(?:de|del)\s+|heure\s+(?:(?:de|du|des)\s+|d['’])|"
+    r"ortszeit\s+(?:in|von)\s+|ora(?:rio)?\s+(?:di|del)\s+|"
+    r"(?:lokale\s+)?tijd\s+(?:in|van)\s+)"
+)
+_EVENT_TIME_OBJECTS = {
+    "arrival", "departure", "checkin", "checkout", "check-in", "check-out",
+    "llegada", "salida", "entrada", "chegada", "partida", "arrivo", "partenza",
+    "arrivee", "depart", "aankomst", "vertrek", "ankunft", "abreise", "anreise",
+}
+
+
+def _named_zone_for_clock(original: str, start: int, end: int) -> bool:
+    """Recognize explicit zone syntax, never classify or convert a city name.
+
+    Only a clock overlapping this exact quote occurrence may supply its zone;
+    an unrelated clock elsewhere in the message cannot contaminate the request.
+    """
+    for clock in re.finditer(_CLOCK_TOKEN, original, re.I):
+        if clock.end() <= start or clock.start() >= end:
+            continue
+        suffix = original[clock.end():clock.end() + 120]
+        introduction = r"^\s*(?:[,([]\s*)?"
+        articles = r"(?:(?:the|la|el|los|las|le|les|il|lo|gli|de|het|der|die|das)\s+|l['’])?"
+        named = re.match(introduction + _NAMED_ZONE_MARKER + articles + r"([^\W\d_]+(?:-[^\W\d_]+)*)", _fold(suffix))
+        if named and named.group(1) not in _EVENT_TIME_OBJECTS:
+            return True
+        # English proper-name + time is an explicit conventional qualifier;
+        # ordinary event labels such as 'Arrival time' are not named zones.
+        proper = re.match(introduction + r"([^\W\d_]+(?:\s+[^\W\d_]+){0,3})\s+(?:local\s+)?time\b", suffix)
+        if proper:
+            first = proper.group(1).split()[0]
+            if first[0].isupper() and _fold(first) not in _EVENT_TIME_OBJECTS | {"local", "hotel", "estimated", "expected"}:
+                return True
+    return False
+
+
 def _surrounding_time_qualifiers(quoted: str, evidence: str, original: str, *, language: str,
-                               message_time: datetime | None) -> tuple[bool, bool, str | None]:
+                               message_time: datetime | None) -> tuple[bool, bool, str | None, str | None]:
     """Retain source date alternatives, clock bounds and zones outside quotes."""
     positions: list[tuple[int, int]] = []
     if evidence and quoted in evidence:
@@ -490,6 +553,7 @@ def _surrounding_time_qualifiers(quoted: str, evidence: str, original: str, *, l
     approximate = False
     grounded = False
     source_days: set[date | None] = set()
+    periods: set[str | None] = set()
     zones = {zone.upper() for zone in re.findall(r"\b(?:UTC|GMT|CET|CEST)\b", quoted, re.I)}
     qualifier = r"(?:after|before|between|later than|earlier than|nach|vor|zwischen|dopo|prima(?: delle)?|tra|apres|avant|entre|despues(?: de)?|antes(?: de)?|na|voor|tussen|ab|vanaf)"
     for start, end in positions:
@@ -497,6 +561,8 @@ def _surrounding_time_qualifiers(quoted: str, evidence: str, original: str, *, l
         if scope is None:
             continue
         grounded = True
+        if _named_zone_for_clock(original, start, end):
+            bound = True
         day, found = _explicit_date(scope, language, message_time)
         if found:
             source_days.add(day)
@@ -508,7 +574,7 @@ def _surrounding_time_qualifiers(quoted: str, evidence: str, original: str, *, l
                     bound = True
         # Inspect the complete source clause, including when the model selected
         # the second clock or dropped the repeated preposition after "or".
-        clock_token = r"\b\d{1,2}[:h]\d{2}\b"
+        clock_token = _CLOCK_TOKEN
         clock_preposition = r"(?:(?:at|um|alle|a(?:\s+las)?|om)\s+)?"
         if re.search(clock_token + r"\s+(?:or|oder|ou|o|of|oppure)\s+"
                      + clock_preposition + clock_token, scope):
@@ -529,6 +595,15 @@ def _surrounding_time_qualifiers(quoted: str, evidence: str, original: str, *, l
         last_word = re.search(r"([^\s]+)\s*$", prefix)
         if last_word and _APPROXIMATE.search(last_word.group(1)):
             approximate = True
+        raw_suffix = original[end:end + 90]
+        if re.match(r"\s*:\s*\d", raw_suffix):
+            bound = True  # omitted seconds are not an exact minute request
+        source_period = re.match(r"\s*("+_MERIDIEM+r")(?!\w)", suffix)
+        period = source_period.group(1).replace(".", "") if source_period else None
+        periods.add(period)
+        if source_period:
+            suffix = suffix[source_period.end():]
+            raw_suffix = raw_suffix[source_period.end():]
         explicit_zone = re.match(r"\s*((?:UTC|GMT)(?:\s*[+-]\s*\d{1,2}(?::?\d{2})?)?|CEST|CET)\b", suffix, re.I)
         if explicit_zone:
             name = explicit_zone.group(1).upper()
@@ -536,12 +611,14 @@ def _surrounding_time_qualifiers(quoted: str, evidence: str, original: str, *, l
                 bound = True
             else:
                 zones.add(name)
-        elif re.match(r"\s*(?:EST|EDT|PST|PDT|CST|CDT|MST|MDT|BST|IST|EET|EEST|[+-]\d{2}:?\d{2})\b",
-                      original[end:end + 90]):  # raw text: case-sensitive abbreviations
+        elif (re.match(r"\s*(?:"+_UNSUPPORTED_ZONES+r")\b", raw_suffix)
+              or re.match(r"\s*[+-]\s*\d{1,2}(?::?\d{2})?", raw_suffix)
+              or re.match(r"\s*"+_IANA_ZONE, raw_suffix, re.I)):
             bound = True
-    if len(zones) > 1 or len(source_days) > 1 or not grounded:
+    if len(zones) > 1 or len(source_days) > 1 or len(periods) > 1 or not grounded:
         bound = True
-    return bound, approximate, next(iter(zones)) if len(zones) == 1 else None
+    return (bound, approximate, next(iter(zones)) if len(zones) == 1 else None,
+            next(iter(periods)) if len(periods) == 1 else None)
 
 
 def _resolve_time(item: GuestIntentV1, record: Mapping[str, Any], safe: Mapping[str, Any],
@@ -549,12 +626,13 @@ def _resolve_time(item: GuestIntentV1, record: Mapping[str, Any], safe: Mapping[
     quoted = item.requested_time_text
     if not quoted:
         return None, False
-    clock, approximate = _clock(quoted)
     language = str(record.get("language") or "").lower().split("-")[0].split("_")[0]
     message_time = _utc(record.get("timestamp_utc"))
-    bound, nearby_approximate, source_zone = _surrounding_time_qualifiers(
+    bound, nearby_approximate, source_zone, source_period = _surrounding_time_qualifiers(
         quoted, item.evidence_quote or "", str(record.get("text") or ""),
         language=language, message_time=message_time)
+    clock_text = quoted + (" " + source_period if source_period else "")
+    clock, approximate = _clock(clock_text)
     approximate = approximate or nearby_approximate
     if bound:
         return None, approximate

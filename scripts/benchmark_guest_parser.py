@@ -4,6 +4,12 @@ Use one standalone process per run: instrumentation and environment changes are
 scoped but process-global. Do not run unrelated parser calls in that process.
 Transport counts mean calls to the original _call_llm, not server receipts.
 Gold review flags describe post-host output; raw model review flags are not gold.
+Legacy raw_gold_pass_count retains its host-UTC comparison and can reject an
+intentional null UTC in extraction mode. checks.raw_diagnostics and its separate
+summary counts describe generation shape, intent, literal evidence/time spans,
+details, profile UTC policy and explicit review flags. Review-vs-host-gold is
+labelled diagnostic; no combined new raw accuracy score is implied. No raw reply
+means no observation; interrupted measurements stay unknown.
 """
 from __future__ import annotations
 
@@ -282,6 +288,118 @@ def _raw_checks(raw: str | None, case: dict) -> dict | None:
         return {"schema_valid": False, "passed": False}
 
 
+_RAW_DIAGNOSTIC_CHECKS = (
+    "generation_schema_valid", "intents_match", "evidence_substrings_valid",
+    "time_span_substrings_valid", "details_grounded", "utc_generation_policy_valid",
+    "explicit_review_flags_valid", "review_flags_match_host_gold",
+)
+
+
+def _strict_raw_json(raw: str) -> Any:
+    """New diagnostics reject ambiguous repeated keys at every object depth.
+
+    The legacy _raw_checks score deliberately retains its historical meaning.
+    This helper changes evaluator diagnostics only, never production decoding.
+    """
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("Duplicate raw JSON key")
+            result[key] = value
+        return result
+    return json.loads(raw, object_pairs_hook=unique, parse_constant=_invalid_constant)
+
+
+def _matches_generation_schema(value: Any, schema: dict, root: dict | None = None) -> bool:
+    """Validate the bounded grammar emitted by guest_generation, fail closed.
+
+    This is not a general JSON Schema implementation. Unknown schema keywords or
+    types fail instead of silently omitting newly introduced generation rules.
+    """
+    root = schema if root is None else root
+    supported = {"$ref", "$defs", "description", "title", "type", "anyOf", "enum",
+                 "properties", "required", "additionalProperties", "items",
+                 "minItems", "maxItems", "minLength", "pattern"}
+    if not isinstance(schema, dict) or set(schema) - supported:
+        return False
+    if "$ref" in schema:
+        reference = schema["$ref"]
+        if not isinstance(reference, str) or not reference.startswith("#/"):
+            return False
+        target = root
+        for part in reference[2:].split("/"):
+            target = target[part.replace("~1", "/").replace("~0", "~")]
+        if not _matches_generation_schema(value, target, root):
+            return False
+    if "anyOf" in schema and not any(_matches_generation_schema(value, branch, root) for branch in schema["anyOf"]):
+        return False
+    if "enum" in schema and value not in schema["enum"]:
+        return False
+    kind = schema.get("type")
+    if kind is None:
+        return True
+    if kind == "null":
+        return value is None
+    if kind == "boolean":
+        return type(value) is bool
+    if kind == "string":
+        return (isinstance(value, str) and len(value) >= schema.get("minLength", 0)
+                and ("pattern" not in schema or re.search(schema["pattern"], value) is not None))
+    if kind == "array":
+        return (isinstance(value, list) and schema.get("minItems", 0) <= len(value) <= schema.get("maxItems", math.inf)
+                and "items" in schema and all(_matches_generation_schema(item, schema["items"], root) for item in value))
+    if kind == "object":
+        if not isinstance(value, dict) or not set(schema.get("required", [])) <= value.keys():
+            return False
+        properties = schema.get("properties", {})
+        extras = value.keys() - properties.keys()
+        if extras and schema.get("additionalProperties") is not True:
+            return False
+        return all(_matches_generation_schema(item, properties[key], root) for key, item in value.items() if key in properties)
+    return False
+
+
+def _raw_diagnostics(raw: str | None, case: dict, profile: str) -> dict | None:
+    """Separate raw grammar/literal checks from the legacy host-UTC score.
+
+    Review comparison is expressly against host gold, which may include
+    uncertainty added by host validation; it is not raw-model review truth.
+    """
+    if raw is None:
+        return None
+    checks = {name: False for name in _RAW_DIAGNOSTIC_CHECKS}
+    checks["model_review_flags"] = None
+    try:
+        from ingestion.guest_generation import generation_schema
+        schema = generation_schema(profile)
+        value = _strict_raw_json(raw)
+        checks["generation_schema_valid"] = _matches_generation_schema(value, schema)
+        items = value.get("intents") if isinstance(value, dict) else None
+        if not isinstance(items, list) or not items or not all(isinstance(item, dict) for item in items):
+            return checks
+        text = case["record"]["text"]
+        checks["intents_match"] = [item.get("intent") for item in items] == case["gold"]["intents"]
+        checks["evidence_substrings_valid"] = all(isinstance(item.get("evidence_quote"), str)
+            and bool(item["evidence_quote"]) and item["evidence_quote"] in text for item in items)
+        checks["time_span_substrings_valid"] = all("requested_time_text" in item and
+            ((item["requested_time_text"] is None and item.get("requested_time_utc") is None)
+             or (isinstance(item["requested_time_text"], str) and bool(item["requested_time_text"])
+                 and item["requested_time_text"] in text)) for item in items)
+        checks["details_grounded"] = all("details" in item and _grounded_details(item["details"], text) for item in items)
+        utc_schema = schema["$defs"]["intent"]["properties"]["requested_time_utc"]
+        checks["utc_generation_policy_valid"] = all("requested_time_utc" in item
+            and _matches_generation_schema(item["requested_time_utc"], utc_schema, schema) for item in items)
+        checks["explicit_review_flags_valid"] = all(type(item.get("needs_review")) is bool for item in items)
+        checks["model_review_flags"] = [item.get("needs_review") if type(item.get("needs_review")) is bool else None for item in items]
+        checks["review_flags_match_host_gold"] = checks["explicit_review_flags_valid"] and all(
+            item["needs_review"] is case["gold"]["needs_review"] for item in items)
+    except (ValueError, KeyError, TypeError, AttributeError, RecursionError):
+        # A malformed raw reply is an observed failed diagnostic, not no reply.
+        pass
+    return checks
+
+
 def _run_cases(config: BenchmarkConfig, cases: list[dict], parser: Any) -> list[dict]:
     original_call, original_read = parser._call_llm, parser._read_cache
 
@@ -334,6 +452,7 @@ def _run_cases(config: BenchmarkConfig, cases: list[dict], parser: Any) -> list[
             trace["normalized"] = {"intents": items, "extraction": meta}
             trace["gold"] = copy.deepcopy(case["gold"])
             trace["checks"] = {"raw": _raw_checks(trace["raw_response"], case),
+                               "raw_diagnostics": _raw_diagnostics(trace["raw_response"], case, config.generation_profile),
                                "normalized": _checks(items, case["gold"], case["record"]["text"], meta)}
             return trace
         except Exception as exc:
@@ -341,7 +460,9 @@ def _run_cases(config: BenchmarkConfig, cases: list[dict], parser: Any) -> list[
             trace["error_types"].append(type(exc).__name__)
             trace["normalized"] = {"intents": [], "extraction": None}
             trace["gold"] = copy.deepcopy(case["gold"])
-            trace["checks"] = {"raw": _raw_checks(trace["raw_response"], case), "normalized": {"passed": False}}
+            trace["checks"] = {"raw": _raw_checks(trace["raw_response"], case),
+                               "raw_diagnostics": _raw_diagnostics(trace["raw_response"], case, config.generation_profile),
+                               "normalized": {"passed": False}}
             return trace
         finally:
             trace["timings"]["total_seconds"] = time.perf_counter() - start
@@ -404,6 +525,8 @@ def run_benchmark(config: BenchmarkConfig, *, parser_module: Any = None) -> dict
                "cache_lookups": 0, "cache_hits": 0, "live_llm": 0, "cache_llm": 0,
                "source_label": 0, "fallback": 0, "error": 0, "total_seconds": 0.0,
                "raw_predictions_count": 0, "raw_gold_pass_count": None, "host_gold_pass_count": None}
+    summary["raw_diagnostics_observed_count"] = 0
+    summary.update({"raw_" + name + "_count": None for name in _RAW_DIAGNOSTIC_CHECKS})
     # Until the whole cohort finishes, zero would falsely imply no work or cost.
     unknown_summary = {key: value if key == "selected_count" else None
                        for key, value in summary.items()}
@@ -448,7 +571,10 @@ def run_benchmark(config: BenchmarkConfig, *, parser_module: Any = None) -> dict
                         summary[result["path"]] += 1
                 predictions = [x for x in report["results"] if x["raw_response"] is not None]
                 summary["raw_predictions_count"] = len(predictions)
+                summary["raw_diagnostics_observed_count"] = len(predictions)
                 if predictions:
+                    for name in _RAW_DIAGNOSTIC_CHECKS:
+                        summary["raw_" + name + "_count"] = sum(result["checks"]["raw_diagnostics"][name] is True for result in predictions)
                     summary["raw_gold_pass_count"] = sum(x["checks"]["raw"]["passed"] for x in predictions)
                     summary["host_gold_pass_count"] = sum(x["path"] == "live_llm" and x["checks"]["normalized"]["passed"] for x in predictions)
                 report["summary"] = summary
