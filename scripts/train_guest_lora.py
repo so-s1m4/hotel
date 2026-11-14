@@ -216,6 +216,11 @@ def _rows(path: Path) -> list[dict]:
 
 def _data_identity(directory: Path) -> dict:
     manifest = _json(directory / "manifest.json")
+    if manifest.get("schema_version") == "guest-sft-mixed-v1":
+        # A distinct, reconstructable composition protocol. Legacy exports keep
+        # their strict source/code checks below; no generic mixture bypass.
+        from scripts.compose_guest_sft import validate_composed_dataset
+        return validate_composed_dataset(directory)
     if (manifest.get("schema_version") != "guest-sft-v1"
             or manifest.get("generation_profile") != "extraction"
             or manifest.get("source_dataset") not in {"quickstart", "dev", "synthetic"}):
@@ -273,6 +278,10 @@ def build_parser() -> argparse.ArgumentParser:
     for flag in ("data-dir", "model-dir", "out-dir"):
         parser.add_argument(f"--{flag}", type=Path, required=True)
     parser.add_argument("--iters", type=int, default=100)
+    parser.add_argument("--steps-per-eval", type=int,
+                        help="Validation cadence; default min(50, iters). Does not change checkpoint cadence.")
+    parser.add_argument("--val-batches", type=int, default=25,
+                        help="Maximum validation batches per pass; default 25, batch size is one.")
     parser.add_argument("--max-seq-length", type=int, default=2048)
     parser.add_argument("--learning-rate", type=float, default=1e-5)
     parser.add_argument("--num-layers", type=int, default=8)
@@ -297,6 +306,9 @@ def prepare_plan(args: argparse.Namespace) -> dict:
             or not 1 <= args.rank <= 64 or not 1 <= args.num_layers <= 64
             or not math.isfinite(args.learning_rate) or not 0 < args.learning_rate <= 1e-3):
         raise ValueError("Invalid bounded training settings; iters must be divisible by gradient accumulation")
+    steps_per_eval = args.steps_per_eval if args.steps_per_eval is not None else min(50, args.iters)
+    if not 1 <= steps_per_eval <= args.iters or not 1 <= args.val_batches <= 10000:
+        raise ValueError("Validation cadence must be 1..iters and validation batches 1..10000")
     data_info, model_info = _data_identity(data), _model_identity(model)
     if type(model_info["num_hidden_layers"]) is not int or args.num_layers > model_info["num_hidden_layers"]:
         raise ValueError("Requested layers exceed the model's declared layers")
@@ -305,7 +317,7 @@ def prepare_plan(args: argparse.Namespace) -> dict:
               "iters": args.iters, "max_seq_length": args.max_seq_length, "learning_rate": args.learning_rate,
               "num_layers": args.num_layers, "grad_accumulation_steps": args.grad_accumulation_steps,
               "grad_checkpoint": args.grad_checkpoint, "mask_prompt": True, "seed": 17,
-              "steps_per_report": 10, "steps_per_eval": min(50, args.iters), "val_batches": 25,
+              "steps_per_report": 10, "steps_per_eval": steps_per_eval, "val_batches": args.val_batches,
               "save_every": min(50, args.iters), "test": False, "trust_remote_code": False,
               "report_to": None, "optimizer": "adam", "lr_schedule": None,
               "lora_parameters": {"keys": ["self_attn.q_proj", "self_attn.v_proj"],

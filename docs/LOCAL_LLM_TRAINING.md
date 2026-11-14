@@ -157,6 +157,19 @@ as a YAML-compatible configuration file. [4][6]
 - `--grad-checkpoint`: trade extra recomputation for reduced activation memory.
 - `--num-layers`, `--rank`, `--learning-rate`: explicit bounded experiments;
   changing adapter structure is not a continuation of the original adapter.
+- `--steps-per-eval`: validation cadence, 1 through `iters`; default remains
+  `min(50, iters)`. Checkpoints still save every `min(50, iters)` updates.
+- `--val-batches`: maximum validation batches per pass, 1–10000; default 25.
+  With batch size one, set this to at least the VALID row count to cover the
+  complete split in each pass. Keeping all files does not itself mean a capped
+  validation pass reads every row.
+
+For a preselected final 200-step candidate with 48 VALID rows,
+`--steps-per-eval 200 --val-batches 48` makes two complete validation passes
+in the inspected MLX-LM 0.32.2 loop, rather than five capped passes. Validation
+runs before that iteration's update: the log labelled step 200 evaluates the
+weights after 199 updates, not the saved final 200-update checkpoint. Retain
+this distinction; neither this loss nor a faster cadence certifies quality.
 
 Compare sustained tokens/sec, peak memory, validation loss and task-specific
 held-out results. Keep inference servers and competing training work off the
@@ -227,3 +240,49 @@ Copy results off any automatically expiring VM before its lifetime ends.
 
 Upstream main branches can change. The execute preflight records the installed
 sources; these references do not replace verification on the actual Mac.
+
+## Explicit split-preserving Dev/Synthetic composition
+
+`scripts.compose_guest_sft` creates a new `guest-sft-mixed-v1` export labelled
+`mixed_dev_synthetic`. It accepts exactly one explicitly hash-pinned approved
+Dev export and one Synthetic export. It copies their TRAIN and VALID chat rows
+without changing targets or original split/line/group identities; it does not
+resplit them through the single-source exporter. The new TEST file is empty.
+Parent TEST contents are never opened; only identifiers and hashes already in
+the pinned parent manifest are used for exclusions. This cannot establish
+cross-source semantic or paraphrase disjointness of unseen test messages.
+
+Required arguments are `--dev-export`, `--synthetic-export`, their respective
+`--dev-manifest-sha256` / `--synthetic-manifest-sha256`, and a fresh `--out`.
+Optional `--augmentation-chat` and `--augmentation-provenance` must be supplied
+together. The latter uses `guest-sft-train-fragments-v1`: a pinned chat-file hash,
+TRAIN-only row reviews and exact pointers to approved TRAIN parent lines, input
+and target hashes. All linked parent groups remain connected even if an operator
+assigns a new fragment group name. Reviews are operator assertions, not automatic
+proof of semantic correctness or that every new word derives from a source.
+Independent data review must precede training.
+
+`--augmentation-weight` defaults to 1 and permits integer 1..4. Repeated fragments
+are explicitly recorded training exposures, not independent examples. The manifest
+separates parent rows, unique canonical production inputs, fragment counts and
+exposures. VALID remains the original approved VALID rows only; it may contain
+no multi-intent cases. No validation or evaluation message is derived from TRAIN
+fragments, and Dev31 remains separate and untouched.
+
+Creation and launcher validation both reconstruct the complete output from parent
+and fragment provenance. Parent/code snapshots are recorded honestly; old parent
+code hashes are not relabelled as current code. Current system/schema must match
+those parents. The legacy launcher checks are unchanged for single-source exports;
+only the explicit reconstructable mixed schema enters the new path. It rejects
+changed targets, conflicting canonical inputs, unreviewed fragments, unknown or
+non-TRAIN parent pointers, cross-split group/ID/text matches, and mandatory
+normalized evaluation-text/identity matches. Additional evaluator sources can be
+passed through repeated `--exclude-evaluation`; their byte hashes are pinned.
+These exact-match guards do not certify absence of undeclared paraphrases.
+
+The normal training launcher still plans by default and trains only with
+`--execute`. Existing exact native tokenizer/prompt-mask checks refuse target
+truncation; choose a sufficient maximum sequence length after that preflight.
+A composition plan neither starts a model nor establishes quality. Fix the intended
+final training step before comparing candidates; validation loss is not permission
+to select checkpoints using diagnostic or held-out targets.
