@@ -1,11 +1,26 @@
-# Локальный parser: ограниченный запуск
+# Локальный parser: запуск и проверка
 
 Parser принимает OpenAI-compatible `/v1/chat/completions`. Для локального
 Ollama-профиля используем `http://127.0.0.1:11434/v1`, один worker,
 `json_schema`, максимум 512 выходных токенов и timeout 15 секунд.
-Это профиль для проверки подключения и формата, а не подтверждённый выбор
-лучшей модели или измерение её качества. Сервер и модель оператор запускает
-отдельно; команды ниже ничего не устанавливают и не скачивают.
+Для этой машины проверяется `ministral-3:3b` с профилем `extraction`:
+модель извлекает намерения и цитаты, а host вычисляет время. Результаты
+сравнения с 8B и ограничения — в [отчёте](reviews/LOCAL_PARSER.md).
+
+## Сервер
+
+На этой машине Ollama 0.34.1 и обе модели установлены вне репозитория.
+Текущий сервер слушает только loopback. После остановки его можно запустить
+с теми же настройками; если Ollama установлен обычным способом, замените
+путь к исполняемому файлу на `ollama`:
+
+```bash
+OLLAMA_HOST=127.0.0.1:11434 \
+OLLAMA_MODELS="$HOME/.local/share/hotel-llm/models" \
+OLLAMA_NUM_PARALLEL=1 OLLAMA_MAX_LOADED_MODELS=1 \
+OLLAMA_CONTEXT_LENGTH=4096 OLLAMA_NO_CLOUD=1 \
+  "$HOME/.local/share/hotel-llm/ollama-0.34.1/ollama" serve
+```
 
 Полный формат cohort, правила измерения и отчётов:
 [бенчмарк parser](PARSER_BENCHMARK.md). Включённые примеры — синтетические
@@ -16,10 +31,16 @@ Ollama-профиля используем `http://127.0.0.1:11434/v1`, один
 ```bash
 export LLM_BASE_URL='http://127.0.0.1:11434/v1'
 export LLM_API_KEY='ollama'
-export LLM_MODEL='REPLACE_WITH_INSTALLED_MODEL_NAME'
+export LLM_MODEL='ministral-3:3b'
 export LLM_RESPONSE_FORMAT='json_schema'
+export LLM_GENERATION_PROFILE='extraction'
 export LLM_MAX_TOKENS='512'
 export LLM_TIMEOUT_SECONDS='15'
+export GUEST_PARSER_WORKERS='1'
+export GUEST_PARSER_OFFLINE='0'
+
+python run.py --data-dir data/PLATO40_v2_quickstart --llm \
+  --out outputs/local_quickstart.jsonl --audit outputs/local_quickstart_audit.jsonl
 ```
 
 `ollama` здесь — явное несекретное значение для локального сервера без
@@ -33,9 +54,17 @@ export LLM_TIMEOUT_SECONDS='15'
 явный `finish_reason`, отличный от `stop`, дают fallback с review.
 Ответ без `finish_reason` поддерживается для совместимости backend.
 Schema не отменяет проверку evidence, времени и остальных ограничений на host.
+`extraction` требует UTC=null и details={} в ответе модели; host сохраняет
+дословные фразы и сам разрешает обоснованные даты. Полный профиль `contract`
+остаётся значением по умолчанию. Пустые details не доказывают отсутствие
+пожеланий гостя: структурированные assistance_requested здесь не извлекаются.
+Явный отказ от поддерживаемой услуги ставит review и убирает requested UTC,
+даже если модель выбрала положительный intent. Это ограниченный набор правил,
+а не полное понимание любого отрицания или сарказма.
 Авторизованные запросы не следуют HTTP redirects. Provider alias может передать
 свой ключ только при совпадении scheme, hostname и effective port; credentials
 в самом URL отклоняются до обращения к серверу.
+Base URL также не допускает query/fragment, включая пустые `?` и `#`.
 
 ## Отдельный план и выполнение
 
@@ -50,6 +79,7 @@ models и machine/RAM, когда эти сведения доступны. Не
 candidate_model='REPLACE_WITH_INSTALLED_MODEL_NAME'
 candidate_revision='sha256:REPLACE_WITH_THE_FULL_64_HEX_DIGEST'
 export LLM_API_KEY='ollama'
+export GUEST_PARSER_OFFLINE='0'
 
 benchmark_args=(
   --input tests/fixtures/parser_benchmark_cases.jsonl
@@ -62,6 +92,7 @@ benchmark_args=(
   --workers 1
   --timeout-seconds 15
   --response-format-mode json_schema
+  --generation-profile extraction
   --max-tokens 512
   --runtime-metadata outputs/local-parser/runtime-cold.json
 )
@@ -107,7 +138,7 @@ workers — отдельное явно записанное сравнение,
 ответов, ограничение размера HTTP body, отсутствие чувствительных строк в
 error logs и конкурентный cache write при независимых timeout.
 
-Фактический локальный pilot выполняется оператором отдельно. Здесь нет
-оценок качества, времени inference или расхода памяти для реальной модели.
+Фактические модельные прогоны и полный Quickstart фиксируются отдельно в
+[отчёте](reviews/LOCAL_PARSER.md), с конкретными версиями и границами проверки.
 Прохождение schema или синтетических tests не подтверждает отсутствие ошибок
 в понимании гостя и не разрешает реальные действия отеля.
