@@ -38,7 +38,7 @@ class CerebrasConfigurationError(ValueError):
 def _validated_key(value: object) -> str:
     if not isinstance(value, str) or not _KEY_PATTERN.fullmatch(value.strip()):
         raise CerebrasConfigurationError(
-            "Некорректный ключ Cerebras. Проверьте CEREBRAS_API_KEY или приватный файл ключа."
+            "Invalid Cerebras API key. Check CEREBRAS_API_KEY or the private key file."
         ) from None
     return value.strip()
 
@@ -65,7 +65,7 @@ class CerebrasConfig:
             if "\x00" in str(self.__cache_dir):
                 raise ValueError
         except (TypeError, ValueError, RuntimeError):
-            raise CerebrasConfigurationError("Некорректная папка кэша Hotel.") from None
+            raise CerebrasConfigurationError("Invalid Hotel cache directory.") from None
 
     def __repr__(self) -> str:
         return "CerebrasConfig(provider='cerebras', model='gpt-oss-120b', credentials='<redacted>')"
@@ -99,7 +99,7 @@ class CerebrasConfig:
         """
         if not _ENVIRONMENT_LOCK.acquire(blocking=False):
             raise CerebrasConfigurationError(
-                "Конфигурация Hotel уже активна. Настраивайте модель один раз при запуске."
+                "Hotel configuration is already active. Configure the model once at startup."
             )
         previous = {name: value for name, value in os.environ.items() if _managed(name)}
         try:
@@ -163,7 +163,7 @@ def load_cerebras_config(*, key_file: str | Path | None = None,
         key = raw.decode("ascii")
     except (OSError, UnicodeError, TypeError, ValueError, RuntimeError):
         raise CerebrasConfigurationError(
-            "Не удалось прочитать ключ Cerebras. Задайте CEREBRAS_API_KEY "
-            "или сохраните ключ в ~/.config/hotel/cerebras.key."
+            "Could not read the Cerebras API key. Set CEREBRAS_API_KEY "
+            "or save the key to ~/.config/hotel/cerebras.key."
         ) from None
     return CerebrasConfig(key, cache_dir=cache_dir)

@@ -16,7 +16,7 @@ export function createReplayControls({api, escape, toast, onView, onDemo, onJour
       <label class="sr-only" for="playback-speed">Playback speed</label>
       <select id="playback-speed"><option value="tour">3-minute tour</option>${PLAYBACK_SPEEDS.map(item => `<option value="${item.value}">${item.label}</option>`).join('')}</select>
     </div>
-    <div class="playback-clock"><time id="playback-clock">—:—:—</time><span id="playback-date">Ready when you are</span></div>
+    <div class="playback-clock"><time id="playback-clock">—:—:—</time><span id="playback-date">—</span></div>
     <div class="playback-track">
       <label class="sr-only" for="playback-range">Position in the dataset</label>
       <input class="playback-range" id="playback-range" type="range" min="0" max="10000" step="1" value="0" disabled>
@@ -32,7 +32,8 @@ export function createReplayControls({api, escape, toast, onView, onDemo, onJour
     <div id="replay-progress" class="replay-preparation" hidden></div>
     <div class="replay-quality" hidden></div>
     <details class="replay-downloads" hidden><summary>Saved results</summary><div class="replay-artifacts"></div></details>`;
-  document.querySelector('.metrics').before(panel);
+  const mount = document.querySelector('#sidebar-timeline');
+  if (mount) mount.append(panel); else document.querySelector('.metrics').before(panel);
   const $ = selector => panel.querySelector(selector);
   const select = $('#dataset-select'), play = $('#playback-toggle'), restart = $('#playback-restart');
   const speed = $('#playback-speed'), range = $('#playback-range'), prepare = $('#run-dataset');
@@ -44,6 +45,7 @@ export function createReplayControls({api, escape, toast, onView, onDemo, onJour
   let manifest = null, clock = null, loader = null, lastFrame = null, frameError = false;
   let manifestLoading = false, manifestError = false, opening = false, destroyed = false;
   let viewIntent = 0, preparing = false;
+  let cursorSeek = null, syncingClock = false;
   const datasetName = value => [...select.options].find(option => option.value === value)?.textContent || value;
   const running = job => ['queued', 'running', 'finalizing'].includes(job?.status);
   const ready = job => ['completed', 'degraded'].includes(job?.status) && job.complete;
@@ -75,6 +77,7 @@ export function createReplayControls({api, escape, toast, onView, onDemo, onJour
   }
   function stopPlayback() {
     clock?.destroy(); loader?.destroy(); clock = null; loader = null;
+    cursorSeek = null; syncingClock = false;
     manifest = null; lastFrame = null; frameError = false; manifestLoading = false; manifestError = false;
   }
   function zeroProgress() {
@@ -105,7 +108,7 @@ export function createReplayControls({api, escape, toast, onView, onDemo, onJour
     $('#playback-clock').dateTime = tick.at_utc;
     $('#playback-date').textContent = dateFormat.format(date);
     $('#playback-phase').textContent = tick.phase === 'reservations' ? 'Early reservations' : 'Hotel operations';
-    range.value = String(Math.round(tick.fraction * 10000));
+    if (!cursorSeek) range.value = String(Math.round((lastFrame?.events_consumed || 0) / manifest.total_events * 10000));
     play.textContent = tick.playing ? 'Ⅱ Pause' : tick.ended ? playback.status === 'finished' ? '↻ Play again' : 'Finishing…' : '▶ Play';
     play.setAttribute('aria-pressed', String(tick.playing));
     $('#playback-status').textContent = frameError ? 'Could not load this moment' : tick.playing ? 'Playing' : tick.ended ? playback.status === 'finished' ? 'Complete' : 'Finishing…' : 'Paused';
@@ -117,6 +120,7 @@ export function createReplayControls({api, escape, toast, onView, onDemo, onJour
     loader.request({key: query}, {invalidate, immediate});
   }
   function handleTick(tick) {
+    if (syncingClock || cursorSeek) {updateClock(tick); return;}
     const reset = ['seek', 'restart'].includes(tick.reason) || (tick.before_first && lastFrame?.events_consumed > 0);
     if (reset) {
       // Clear future guests, approvals and occupancy while a past seek loads.
@@ -130,9 +134,9 @@ export function createReplayControls({api, escape, toast, onView, onDemo, onJour
     if (tick.ended) refreshButtons();
   }
   function refreshButtons() {
-    const loading = opening || manifestLoading;
+    const loading = opening || manifestLoading || Boolean(cursorSeek);
     const finishing = clock?.state().ended && lastFrame?.events_consumed !== manifest?.total_events;
-    play.disabled = !clock || manifestLoading || opening || frameError || finishing;
+    play.disabled = !clock || manifestLoading || opening || Boolean(cursorSeek) || frameError || finishing;
     restart.disabled = !clock;
     range.disabled = !clock;
     select.disabled = active || opening;
@@ -167,7 +171,20 @@ export function createReplayControls({api, escape, toast, onView, onDemo, onJour
         load: item => api(`/api/replays/${encodeURIComponent(jobId)}/frame?${item.key}`),
         onFrame(frame) {
           if (own !== epoch || destroyed) return;
+          const seek = cursorSeek;
+          if (seek && frame.events_consumed !== seek.cursor) return;
           lastFrame = frame; frameError = false;
+          if (seek) {
+            syncingClock = true;
+            try {
+              const at = seek.cursor === 0 ? manifest.start_utc : frame.as_of_utc;
+              if (!Number.isFinite(Date.parse(at))) throw new Error('This event has no valid playback time.');
+              clock.seek(at, {before: seek.cursor === 0});
+            } catch (error) {
+              cursorSeek = null; frameError = true; toast(error.message, true); refreshButtons(); return;
+            } finally { syncingClock = false; }
+            cursorSeek = null;
+          }
           $('#playback-event-count').textContent = `${frame.events_consumed.toLocaleString()} / ${manifest.total_events.toLocaleString()} events`;
           const event = frame.current_event;
           const labels = {booking_created: 'Reservation created', roster_update: 'Team update',
@@ -183,6 +200,7 @@ export function createReplayControls({api, escape, toast, onView, onDemo, onJour
         },
         onError(error) {
           if (own !== epoch || destroyed) return;
+          cursorSeek = null;
           frameError = true;
           clock?.pause();
           refreshButtons();
@@ -297,9 +315,14 @@ export function createReplayControls({api, escape, toast, onView, onDemo, onJour
     if (!clock || !manifest) return;
     viewIntent++;
     frameError = false;
-    const fraction = Number(range.value) / 10000;
-    const first = Date.parse(manifest.start_utc), last = Date.parse(manifest.end_utc);
-    clock.seek(first + fraction * (last - first), {before: fraction === 0});
+    const cursor = Math.round(Number(range.value) / 10000 * manifest.total_events);
+    cursorSeek = {cursor};
+    clock.pause();
+    lastFrame = null;
+    emitView(null);
+    $('#playback-event-count').textContent = `Opening event ${cursor.toLocaleString()}…`;
+    loader.request({key: `cursor=${cursor}`}, {invalidate: true, immediate: true});
+    $('#playback-status').textContent = cursor === manifest.total_events ? 'Finishing…' : 'Opening event…';
     refreshButtons();
   };
   prepare.onclick = prepareDataset;
@@ -332,7 +355,7 @@ export function createReplayControls({api, escape, toast, onView, onDemo, onJour
     onJournal(null, 0, initialPlayback);
     onView({...latest, playback: initialPlayback});
     $('#source-caption').textContent = `${datasetName(dataset)} · prepare to begin`;
-    $('#playback-clock').textContent = '—:—:—'; $('#playback-date').textContent = 'Ready when you are';
+    $('#playback-clock').textContent = '—:—:—'; $('#playback-date').textContent = '—';
     $('#playback-event-count').textContent = '0 events'; range.value = '0';
     $('#playback-status').textContent = 'Preparation required';
     $('#playback-phase').textContent = 'Not prepared';

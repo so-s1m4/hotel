@@ -1,173 +1,194 @@
-# PLATO 40: демонстрация
+# PLATO 40: Demo
 
-Сайт показывает исходные Quickstart и Dev по времени: номера, сообщения гостей,
-решения движка и исключения на телефоне управляющего. Занятость и показания берутся
-из набора данных. Архитектура, персонажи и их занятия — иллюстрация, не измеренные
-координаты или поведение людей. Все 40 исходных номеров показаны на одном уровне
-с ресепшном, зоной ожидания и помещением уборки. Это удобная обзорная планировка;
-исходные ID и этажи в данных не меняются. Стены имеют высоту 2,6 м и толщину 20 см,
-дверные и оконные проёмы сохранены, крыша открыта для обзора. На широком экране
-отель расположен слева, телефон управляющего — справа, сообщения гостей — под
-отелем. Действия остаются симуляцией.
+The site replays the original Quickstart and Dev datasets over time, showing rooms,
+guest messages, engine decisions, and approval requests on the manager's phone.
+Occupancy and readings come from the dataset. The architecture, characters, and
+their activities are illustrative, not measured coordinates or human behavior. All
+40 source rooms appear on one level with reception, a waiting area, and a housekeeping
+room. This is a convenient overview layout; source IDs and floor numbers in the data
+are unchanged. Walls are 2.6 m high and 20 cm thick; door and window openings are
+preserved, and the roof is open for viewing. On a wide screen, the hotel is on the
+left, the manager's phone on the right, and guest messages below the hotel. Actions
+remain simulated.
 
-## Запуск
+## Current interface snapshot and provenance
+
+The current `hotel_web` interface restores the reviewed 3D hotel view, sidebar,
+manager phone, and theme from `outputs/release-candidate/incoming/hotel-current-3d-review.zip`
+(SHA-256 `43b737cf1937f652835862e09b044d4317296d3c6a09e7c6527eda22c54f1965`).
+The source was based on snapshot `f88f3fb` with local fixes and English interface
+strings. The preview at `http://127.0.0.1:8765` was visually checked; the isolated
+frontend passed 68 JavaScript tests and its build succeeded.
+
+This UI restoration and the English-string updates were made after the frozen
+`bff983d` Holdout runtime. They are presentation changes and are not part of that
+runtime or its currently running primary Cerebras Holdout job. The earlier offline
+diagnostic is a separate run; it is not a Holdout result. Final Holdout results are
+not recorded here and will be added after the primary run completes.
+
+## Run
+
+From the repository root:
 
 ```bash
-npm --prefix hotel_web ci
-npm --prefix hotel_web run build
-.venv/bin/python -m hotel_bot
+python -m pip install -e '.[dev]'
+python -m hotel_bot
 ```
 
-Откройте [Hotel](http://127.0.0.1:8765). На Mac можно использовать `Start Hotel.command`.
-Другой порт: `--port 8766`. Сайт доступен только на этом компьютере.
-Ключ Cerebras хранится вне проекта в `~/.config/hotel/cerebras.key` либо
-`CEREBRAS_API_KEY`. Он не входит в браузерную сборку.
+Open [Hotel](http://127.0.0.1:8765). On a Mac, you can use `Start Hotel.command`.
+To use another port, pass `--port 8766`. The site is available only on this computer.
+The Cerebras key is stored outside the project at `~/.config/hotel/cerebras.key` or
+provided through `CEREBRAS_API_KEY`. It is not included in the browser build.
 
-## Показ полного набора
+## Show the full dataset
 
-1. Выберите Quickstart или Dev. Если для него уже есть сохранённый полный прогон,
-   сайт открывает его с начала, на паузе.
-2. Нажмите **Play**. Часы идут по историческому времени; события, сообщения и
-   решения появляются по мере достижения их времени доступности.
-3. Режим **3-minute tour** сжимает весь период до трёх минут: ранние бронирования
-   до начала эксплуатации проходят за 5 секунд, остальные события — за 175 секунд.
-   Это исключает долгий пустой старт; ни одна запись не удаляется. На других скоростях
-   можно подробнее рассмотреть день или отдельный случай. Ускорение не удаляет
-   события: счётчик учитывает весь пройденный префикс потока.
-4. **Pause** останавливает часы. Ползунок перемещает по истории, **Restart**
-   возвращает к началу. Перемотка назад убирает будущие сообщения, решения,
-   согласования и записи журнала. При одинаковом времени сохраняется исходный
-   порядок решений; наблюдения используют ту же границу доступности по времени,
-   что и исходный движок.
-5. **Overview** показывает весь отель; **Reception** и **Housekeeping** приближают
-   общие зоны. Выбор номера приближает его; вращайте отель мышью, перемещайте
-   правой кнопкой и приближайте колесом. Все 40 номеров остаются в списке. Жители
-   появляются только в номерах с подтверждённой занятостью. Они могут читать,
-   отдыхать и двигаться — это иллюстрация жизни отеля.
-6. Раскройте **Action log**: действие, время и причина. **Download log** сохраняет
-   все записи до выбранного момента. В конце воспроизведения это полный журнал.
-   Полные артефакты завершённого расчёта доступны отдельно в свёрнутых загрузках.
+1. Select Quickstart or Dev. If a saved full replay is available for that dataset,
+   the site opens it from the beginning in a paused state.
+2. Click **Play**. The clock follows historical time; events, messages, and decisions
+   appear as their availability times are reached.
+3. **3-minute tour** compresses the entire period into three minutes: early bookings
+   before operations begin pass in 5 seconds, and the remaining events play over
+   175 seconds. This avoids a long empty start; no records are removed. At other
+   speeds, you can inspect a day or a specific case in more detail. Faster playback
+   does not remove events: counters include the entire stream prefix that has played.
+4. **Pause** stops the clock. The slider moves through the history, and **Restart**
+   returns to the beginning. Seeking backward removes future messages, decisions,
+   approvals, and log entries. Decisions at the same time retain their source order;
+   observations use the same time-availability boundary as the original engine.
+5. **Overview** shows the whole hotel; **Reception** and **Housekeeping** zoom in on
+   shared areas. Selecting a room zooms in on it; rotate the hotel with the mouse,
+   pan with the right mouse button, and zoom with the wheel. All 40 rooms remain in
+   the list. Residents appear only in rooms with confirmed occupancy. They may read,
+   rest, and move around as an illustration of hotel life.
+6. Expand **Action log** to see each action, time, and reason. **Download log** saves
+   all entries up to the selected moment. At the end of playback, it is the full log.
+   Complete run artifacts are also available separately in the collapsed downloads.
 
-Полный контрольный Quickstart содержит 3 939 нормализованных событий и 112
-гостевых сообщений; Dev — 65 434 события и 1 612 сообщений. Телеметрия, бронирования
-и другие исходные таблицы используются gateway по времени доступности. Число
-событий потока не равно сумме всех строк всех исходных CSV.
+The full reference Quickstart contains 3,939 normalized events and 112 guest
+messages; Dev contains 65,434 events and 1,612 messages. Telemetry, bookings, and
+other source tables are queried through the gateway at each availability time. The
+number of events in the stream is not the sum of all rows in all source CSV files.
 
-**Play воспроизводит сохранённый реальный расчёт.** Он не отправляет сообщения в
-модель заново и не запускает второй движок. Это даёт воспроизводимый показ без
-ожидания сетевых ответов. Новая подготовка набора — отдельное действие; её
-завершение и состояние видны отдельно от часов презентации. Подготовка использует
-Cerebras либо подходящий проверенный кэш, затем настоящий `DecisionEngine`.
+**Play replays the saved completed run.** It does not send messages to the model again
+or start a second engine. This makes the demo reproducible without waiting for network
+responses. Preparing a new dataset is a separate action; its progress and status are
+shown separately from the presentation clock. Preparation uses Cerebras or a suitable
+verified cache, then the actual `DecisionEngine`.
 
-Нельзя выдавать счётчики воспроизведения за точность модели. Исходные метки
-`request_type` сохраняются в production-контексте; независимая смысловая точность
-так не измеряется. Ошибки и fallback подготовки явно отмечаются.
+Playback counters are not model-accuracy measurements. Source labels in `request_type`
+are preserved in the production context; they do not measure independent semantic
+accuracy. Preparation errors and fallback results are marked explicitly.
 
-## Короткий сценарий презентации
+## Short presentation walkthrough
 
-Начните с Quickstart и Play. Покажите движущиеся часы и меняющуюся занятость,
-затем приблизьте отдельный номер или общую зону. При появлении сообщения поставьте на паузу:
-сопоставьте запрос гостя, решение и причину в журнале. Обычные задачи создаются
-автономно. На телефоне находятся только реальные требования согласования из
-движка; это исторические записи, которые нельзя одобрить задним числом.
+Start with Quickstart and click **Play**. Show the moving clock and changing occupancy,
+then zoom in on a room or shared area. When a message appears, pause and compare the
+guest request, decision, and reason in the log. Routine tasks are created autonomously.
+Only actual approval requirements from the engine appear on the phone; these are
+historical records and cannot be approved retroactively.
 
-Покажите перемотку назад: будущий запрос исчезает. Затем вернитесь в конец и
-скачайте журнал. Для длинного показа переключите Dev: те же действия охватывают
-весь год данных, без подгонки сценария под отдельный номер.
+Seek backward to show a future request disappearing. Then return to the end and
+download the log. For a longer demonstration, switch to Dev: the same controls cover
+the full year of data without tailoring the scenario to a particular room.
 
-## Как показать прогнозирование без данных из будущего
+## Show planning without future data leakage
 
-В официальной таблице нет отдельного критерия «предсказание будущего — 20 баллов».
-20 баллов относятся к демонстрации и презентации: сценарии/визуализация — 8,
-журнал решений — 7, ограничения/проверка — 5. Упреждающее планирование относится
-также к автономности, энергетике, логистике и рекомендациям.
+The official scoring table has no separate “predicting the future — 20 points”
+criterion. The 20 points are for the demo and presentation: scenarios and visualization
+are worth 8, the decision log 7, and limitations and verification 5. Forward planning
+also relates to autonomy, energy, logistics, and recommendations.
 
-У решения есть время. Фактические измерения позже него скрыты. Прогноз погоды
-может относиться к будущему, но его `issued_utc` уже должен наступить; аналогично
-тариф доступен только после `published_utc`. Бронь видна после создания, отсутствие
-сотрудника — после публикации. Годовой анализ остаётся ретроспективным и не
-подмешивается в решения прошлого. Полная предварительная загрузка ZIP не отменяет
-эти границы: Prepare обрабатывает события последовательно через gateway «на тот момент».
+Every decision has a timestamp. Measurements later than that time are hidden. A weather
+forecast may refer to the future, but its `issued_utc` must already have arrived; likewise,
+a tariff is available only after `published_utc`. A booking is visible after it is
+created, and a staff absence only after publication. Annual analysis remains
+retrospective and is not fed into past decisions. Preparing the full ZIP in advance
+does not bypass these limits: **Prepare dataset** processes events sequentially through
+the gateway as of each event time.
 
-Проверенные примеры из сохранённого контрольного Dev
-`replay-6048e67101754c4fa2f321224263a6ae` (местное время Europe/Vienna):
+Verified examples from the saved reference Dev replay
+`replay-6048e67101754c4fa2f321224263a6ae` (Europe/Vienna local time):
 
-1. **2 января, 13:00, номер 304.** Предварительный прогрев свободного номера до
-   21 °C перед известным скорым заездом. Используется прогноз на 14:00, выпущенный
-   в 06:00, и уже опубликованный тариф. Это использование доступного внешнего
-   прогноза, а не собственная модель погоды. Решение: `decision:01e7737429889a36d4dc`.
-2. **3 января, 15:00, центральный контейнер.** При заполнении 59,6% скорость
-   накопления за предыдущие часы даёт оценку заполнения примерно через 11,6 часа.
-   Следующий плановый вывоз позже — движок предлагает дополнительный сервис.
-   Это линейная экстраполяция прошлых наблюдений. Указанные 24 часа на организацию
-   сервиса — допущение; такой заказ сам по себе не устраняет ближайший риск.
-   Решение: `decision:48370719b2ae173b9106`.
-3. **2 января, 00:00, батарея.** Текущая известная цена 0,213 €/кВт·ч сравнивается
-   с опубликованным диапазоном 0,188–0,293. Предлагается ограниченный 15-минутный
-   заряд с учётом потерь и допустимого заряда батареи. Это эвристическое
-   планирование по известным ценам, без доказанной экономии.
-   Решение: `decision:b44a1a9ee19e8b151a9c`.
+1. **January 2, 13:00, room 304.** Preheat a vacant room to 21 °C before a known
+   upcoming arrival. The plan uses a 14:00 forecast issued at 06:00 and a tariff that
+   has already been published. This uses an available external forecast, not an
+   in-house weather model. Decision: `decision:01e7737429889a36d4dc`.
+2. **January 3, 15:00, central waste container.** At 59.6% full, the accumulation
+   rate over the preceding hours estimates that it will reach capacity in about
+   11.6 hours. The next scheduled pickup is later, so the engine proposes an extra
+   service. This is a linear extrapolation from past observations. The assumed
+   24-hour service lead time means the order alone does not remove the near-term risk.
+   Decision: `decision:48370719b2ae173b9106`.
+3. **January 2, 00:00, battery.** The currently known price of €0.213/kWh is compared
+   with the published range of €0.188–0.293. The system proposes a limited 15-minute
+   charge, accounting for losses and the battery's permitted charge level. This is
+   heuristic planning with known prices; savings have not been demonstrated.
+   Decision: `decision:b44a1a9ee19e8b151a9c`.
 
-Для показа откройте Dev, остановитесь на нужном времени и раскройте **Action log**.
-Сопоставьте время решения, **Why**, ссылки на исходные наблюдения и **Verify**.
-Для точного поиска записи можно использовать полный скачиваемый журнал и её ID.
-В текущем интерфейсе отдельного графика прогноза или перехода к точному времени нет.
-На презентации показывайте цепочку «что известно сейчас → оценка риска → решение →
-как проверим результат». Датчик из будущего не является доказательством прошлого решения.
+To show an example, open Dev, pause at the relevant time, and expand **Action log**.
+Compare the decision time, **Why**, source observation references, and **Verify**.
+For an exact lookup, use the full downloadable log and the decision ID. The current
+interface has no separate forecast chart or jump-to-time control. Present the chain
+“what is known now → risk estimate → decision → how the result will be checked.” A
+sensor reading from the future is not evidence for a past decision.
 
-Не заявляйте собственный обученный предиктор погоды, предсказание завтрашней утечки,
-доказанную экономию или 100% точность. Вода обнаруживается по уже наблюдаемому
-расходу; прогноз дефицита и переполнения в логистике рассчитывается отдельно.
+Do not claim an in-house trained weather predictor, a prediction of tomorrow's leak,
+proven savings, or 100% accuracy. Water incidents are detected from consumption
+already observed; forecasts of shortages and overflow in logistics are calculated
+separately.
 
-## Новый набор из ZIP
+## Import a new dataset from ZIP
 
-Нажмите **Upload ZIP** и выберите архив. Приложение найдёт комплект файлов Hotel
-внутри вложенных папок, проверит структуру и добавит набор в список. Импорт
-происходит локально и не обращается к Cerebras. Для расчёта выбранного нового
-набора отдельно нажмите **Prepare dataset** и дождитесь завершения.
+Click **Upload ZIP** and select an archive. The app finds a Hotel file set inside
+nested folders, checks its structure, and adds it to the dataset list. Import happens
+locally and does not contact Cerebras. To process the selected new dataset, click
+**Prepare dataset** separately and wait for it to finish.
 
-После подготовки **Play** работает повторно без пересчёта и новых запросов модели.
-Архив подготовки сохраняется после перезапуска сайта. Повторная загрузка тех же
-данных распознаётся; она не должна требовать повторной подготовки.
+After preparation, **Play** can be used again without rerunning the analysis or making
+new model requests. The prepared archive is retained after the site restarts. Uploading
+the same data again is recognized and should not require preparation again.
 
-Поддерживается комплект из 17 исходных файлов формата PLATO40 для номеров
-101–110, 201–210, 301–310 и 401–410, а не произвольный ZIP с любой таблицей. Если архив повреждён, зашифрован, содержит несколько
-полных комплектов или не содержит обязательных файлов, сайт объяснит причину.
-Ограничения: 128 MiB ZIP, 512 MiB распакованных данных. Импорт не перезаписывает
-исходные Quickstart и Dev; данные сохраняются отдельно в `outputs/imported-datasets/`.
+The app supports the 17-file PLATO40 set for rooms 101–110, 201–210, 301–310, and
+401–410; it does not accept an arbitrary ZIP containing any table. If an archive is
+corrupt, encrypted, contains multiple complete sets, or is missing required files,
+the site explains why. Limits: 128 MiB for the ZIP and 512 MiB for extracted data.
+Import does not overwrite the original Quickstart or Dev data; imported data is stored
+separately in `outputs/imported-datasets/`.
 
-## Собственный запрос через API
+## Submit a custom request through the API
 
-Переключитесь в интерактивный режим и отправьте своё сообщение. Здесь комнаты
-и их состояния — отдельный демонстрационный пример; исходный набор не меняется.
-Варианты из **Try a request**:
+Switch to interactive mode and send your own message. The rooms and their states here
+are a separate demonstration example; the source dataset is unchanged. Options under
+**Try a request**:
 
-- Полотенца или Wi-Fi: автономная задача соответствующей службе.
-- Ранний заезд: существующий turnaround с проверкой комнат и ресурсов.
-- Осмотр неисправности в занятом номере: согласование управляющего и отдельное
-  согласие гостя. Одного согласования недостаточно для входа.
-- Неясный запрос: уточнение, без выдуманного действия и лишнего согласования.
+- Towels or Wi-Fi: an autonomous administrative task for the relevant service.
+- Early check-in: the existing turnaround planner checks rooms and resources.
+- Inspect a fault in an occupied room: manager approval and separate guest consent
+  are required. Manager approval alone does not authorize entry.
+- An unclear request: ask for clarification without inventing an action or adding an
+  unnecessary approval step.
 
-Модель извлекает намерения, а движок определяет действия. Все кандидаты проходят
-`validate_safety` и `MockExecutor`. Очередь задач не означает фактическую отправку
-сотрудника, открытие двери, доставку сообщения или выполненный ремонт.
-`effects_applied=false`, исторические наблюдения не изменяются.
+The model extracts intent, and the engine determines actions. Every candidate passes
+through `validate_safety` and `MockExecutor`. A queued task does not mean that a worker
+was actually dispatched, a door was opened, a message was delivered, or a repair was
+completed. `effects_applied=false`; historical observations are not changed.
 
-Повтор запроса с тем же ID не повторяет модель и действие; другой текст с тем же
-ID отклоняется. В одной интерактивной сессии допускается 200 новых сообщений.
-Перезапуск сервера начинает новую интерактивную сессию; журналы сохраняются.
+Repeating a request with the same ID does not repeat model extraction or the action;
+different text with the same ID is rejected. An interactive session accepts up to
+200 new messages. Restarting the server begins a new interactive session; logs are
+retained.
 
-## Сохранённые данные и проверки
+## Saved data and validation
 
-Quickstart и Dev независимы и никогда не объединяются. Входы находятся в
-`data/PLATO40_v2_quickstart` и `data/PLATO40_v2_dev` и не перезаписываются.
-Полные результаты — в `outputs/bot-replays/<run-id>/`:
-`decisions.jsonl`, `audit.jsonl`, `journal.jsonl`, `summary.json`, `validation.json`,
-`extractions.jsonl`, `rejections.jsonl`. В сводке сохранены SHA-256 входов.
-При восстановлении проверяются целостность и соответствие источника; изменённые
-данные не подставляются в старую историю незаметно.
+Quickstart and Dev are independent and are never merged. Inputs are stored in
+`data/PLATO40_v2_quickstart` and `data/PLATO40_v2_dev` and are not overwritten.
+Complete results are stored in `outputs/bot-replays/<run-id>/`, including
+`extractions.jsonl` and `rejections.jsonl`. The summary stores SHA-256 hashes of the
+inputs. When a replay is restored, integrity and source consistency are checked;
+changed data is not silently substituted into the old history.
 
-Журнал интерактивной сессии: `outputs/bot-session/<session-id>/actions.jsonl`.
-Каждая запись содержит действие, объяснение и фактический статус симуляции.
-Технические поля сохранены в скачиваемом журнале, а не на главном экране.
-Исходный CLI `run.py` и независимый валидатор сохранены.
+Interactive session logs are stored in
+`outputs/bot-session/<session-id>/actions.jsonl`. Each entry includes the action, its
+explanation, and the actual simulation status. Technical fields remain in the
+downloadable log rather than the main screen. The original CLI `run.py` and the
+independent validator are still available.

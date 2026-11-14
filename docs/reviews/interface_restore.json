@@ -1,0 +1,79 @@
+{
+  "type": "post_freeze_interface_restoration_and_english_copy",
+  "verified_utc": "2026-11-14T11:57:30.282786+00:00",
+  "frozen_holdout_runtime_commit": "bff983d229b77f94b9819ddc8d6c9a2c26b8768e",
+  "holdout_runtime_affected": false,
+  "source_archive": {
+    "filename": "hotel-current-3d-review.zip",
+    "sha256": "43b737cf1937f652835862e09b044d4317296d3c6a09e7c6527eda22c54f1965",
+    "bytes": 95480,
+    "shared_upload_utc": "2026-11-14T11:21:40.427036+00:00",
+    "declared_base": "f88f3fb plus local fixes",
+    "git_ancestry_verified": false,
+    "scope": "22 original frontend source files plus one handoff note; no datasets, keys or compiled output"
+  },
+  "installed_frontend_sha256": {
+    "hotel_web/index.html": "a8fd35acbd8e43ba83f4f11642107b7955ead4362b99cad7a2117bca995871d1",
+    "hotel_web/.gitignore": "f99ead27b34cbc6756d707e7e7ee7340eb9a71e02dfec2b40d5fb848dd3f4d4f",
+    "hotel_web/package-lock.json": "7bf75fb480d94aff1bd2077c3f50846b5d5c1d7675dc9d3ceb29e8fe111dbc37",
+    "hotel_web/package.json": "91cfa5f839b065732de351fba00d69f5e65e85f10d241f08a34e5c6e4543e7d3",
+    "hotel_web/src/request-links.js": "cc6bbad5230c42dade310bc141b482d1eb61c5a97eed558116bf6a42d28d2340",
+    "hotel_web/src/replay.test.js": "84d417ea97825ea9abe593b05925cf630d723539b7466cb0a13a235efe3a51f5",
+    "hotel_web/src/icons.js": "8de7ad46d0d3624244851585329bf6c5f2791de410c6f0da0492636eec894a6e",
+    "hotel_web/src/theme.css": "41b941bc6160c3729b7915c51eb72d60ad1acc4dc4a1028752381c1aab848b58",
+    "hotel_web/src/scene.js": "ad2e0946f5255be4ebd04d907db48e9e4fe9c497296d2bd64e826db9de25c3d6",
+    "hotel_web/src/stable-content.js": "4dfbb6a32413507ff9d4af9a80765391ad2f2dd6192b65135dfe10f7093191e2",
+    "hotel_web/src/import.test.js": "41a2012bd01c9717a2d016b79e7bf8bb5dcb98feebe437d9fc4d70e842ef45c2",
+    "hotel_web/src/playback.js": "dd65380b93a461e7d4d479394a73428fe057f89b1c3f8a272093ddd8529cd852",
+    "hotel_web/src/import.js": "8322c874dbb2895b8dad416b9f32ade263457155a0d5871717478fa2c2ca84dd",
+    "hotel_web/src/arrival-progress.js": "208e5b5b0e1cbbcf1a4f5606fbf7415f607cdc4ab684d5adde90c330348cbe0f",
+    "hotel_web/src/playback.test.js": "a65427d6c3994ec0069960aa56677abb94664c4df6cb7c8f0b133cdcd6f14793",
+    "hotel_web/src/journal.js": "f22ca217d70453bed0b94f9a8609d610ae066bbc1529a78610137fc22d2d60f2",
+    "hotel_web/src/arrival-progress.test.js": "3438465359f33ee5f7fbcbdb5886edba4741d285b1a0b0670df1fd888f2d261a",
+    "hotel_web/src/main.js": "af1a1f9664fc241a7414d1ae1ca2db109bd1ee7dbe60f79bd46d8fdbfaed59ca",
+    "hotel_web/src/style.css": "45841b9e7a4d17f6267a67f7177332cf65d95e1fa8d4f30f3a7f0619b53d7aff",
+    "hotel_web/src/replay.js": "0a2324324e6ce3ca5fe8c0030ad9e9db4aecef403658582ab3bee0fdf210066a",
+    "hotel_web/src/stable-content.test.js": "12131ac64f7797b0dc74e6f61c5b70ecf8b43530cb7facb8b54524dfc5b9193f",
+    "hotel_web/src/request-links.test.js": "29d8769159f8315604e5741330522b72992de2ef45bef2ac37306e1314ba3769"
+  },
+  "backend_translation_files": [
+    "hotel_bot/config.py",
+    "hotel_bot/server.py"
+  ],
+  "backend_translation_scope": "User-facing string literals only; configuration and control flow unchanged.",
+  "documentation_files": [
+    "README.md",
+    "docs/DEMO_SITE.md"
+  ],
+  "verification": {
+    "javascript": {
+      "command": "node --test src/*.test.js",
+      "cwd": "hotel_web",
+      "passed": 68,
+      "failed": 0,
+      "source_bound_by_all_22_hashes": true
+    },
+    "backend": {
+      "command": ".venv/bin/python -m pytest -q tests/bot/test_config.py tests/bot/test_server.py",
+      "passed": 142,
+      "elapsed_seconds": 2.82
+    },
+    "build": {
+      "command": "npm --prefix hotel_web run build",
+      "vite": "6.4.6",
+      "exit_code": 0
+    },
+    "browser": {
+      "url": "http://127.0.0.1:8765",
+      "observed": "New sidebar, timeline, 3D hotel and manager phone visibly loaded; original Dev archive opened without inference.",
+      "not_claimed": "Exhaustive visual or rendering performance acceptance."
+    },
+    "api_compatibility": "Read-only route, verb, payload and response-field review found no blocking mismatch.",
+    "english": "No Cyrillic UI copy in hotel_web and hotel_bot; maintained README files are English."
+  },
+  "limits": [
+    "Existing original UI snapshot restored; separate private rendering-fix candidate was not included.",
+    "These frontend and copy changes were made after Holdout processing began and are disclosed separately from its immutable runtime.",
+    "No Holdout examples, results or metrics were used to change frontend behavior or engine/parser rules."
+  ]
+}

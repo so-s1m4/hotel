@@ -70,6 +70,19 @@ test('fresh browser opens the saved Dev run paused at zero without preparation',
   assert.equal(h.element('#playback-toggle').disabled, false);
 });
 
+test('slider seeks the exact event cursor and displays event-count progress', async t => {
+  const h = setup(t, {frame: path => frame(Number(new URL(path, 'http://localhost').searchParams.get('cursor') || 0))});
+  await settle();
+  const slider = h.element('#playback-range');
+  slider.value = '5000'; slider.oninput(); await settle();
+  assert.ok(h.calls.some(call => call.path.endsWith('/frame?cursor=10')));
+  assert.equal(h.views.at(-1).playback.events_consumed, 10);
+  assert.equal(slider.value, '5000');
+  assert.equal(h.element('#playback-event-count').textContent, '10 / 20 events');
+  assert.equal(h.control.getPlayback().playing, false);
+  assert.ok(!h.calls.some(call => call.path.includes('/frame?at=')));
+});
+
 test('end seek clears future UI and stays Finishing until final frame arrives', async t => {
   let finish;
   const h = setup(t, {frame: path => path.endsWith('cursor=0') ? frame() : new Promise(resolve => {finish = resolve;})});

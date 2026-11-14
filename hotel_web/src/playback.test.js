@@ -147,6 +147,17 @@ test('three-minute tour consumes the full reservation interval in five seconds, 
   assert.equal(h.clock.state().duration_seconds, 180);
 });
 
+test('tour slider follows elapsed playback and seeks on the same scale', () => {
+  const h = harness({start: 0, operationalStart: 1_000_000, end: 3_000_000, tour: true});
+  h.clock.play(); h.elapse(5000);
+  assert.ok(Math.abs(h.clock.state().fraction - 5 / 180) < 1e-9);
+  h.clock.pause(); h.clock.seekFraction(0.5);
+  assert.ok(Math.abs(h.clock.state().fraction - 0.5) < 1e-9);
+  assert.ok(Math.abs(h.clock.state().time_ms - (1_000_000 + 85 / 175 * 2_000_000)) < 1);
+  h.clock.setSpeed(60); h.clock.seekFraction(0.5);
+  assert.equal(h.clock.state().time_ms, 1_500_000);
+});
+
 test('piecewise tour remains monotonic continuously through its boundary and terminal pause', () => {
   const h = harness({start: 0, operationalStart: 9_000_000, end: 40_000_000, tour: true});
   h.clock.play();

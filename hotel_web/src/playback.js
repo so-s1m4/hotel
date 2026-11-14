@@ -58,7 +58,8 @@ export function createPlaybackClock({start, end, speed = 86400, operationalStart
       duration_seconds: mode === 'tour' ? tourPlan.durationMs / 1000 : (last - first) / multiplier / 1000,
       remaining_seconds: mode === 'tour' ? (tourPlan.durationMs - tourPosition(current)) / 1000 : (last - current) / multiplier / 1000,
       before_first: beforeFirst, ended: !beforeFirst && current >= last,
-      fraction: last === first ? Number(!beforeFirst) : (current - first) / (last - first)};
+      fraction: last === first ? Number(!beforeFirst) : mode === 'tour'
+        ? tourPosition(current) / tourPlan.durationMs : (current - first) / (last - first)};
   }
   function emit(reason) { onTick({...state(), reason}); }
   function advance(at) {
@@ -113,6 +114,12 @@ export function createPlaybackClock({start, end, speed = 86400, operationalStart
       emit('seek');
       schedule();
       return state();
+    },
+    seekFraction(value) {
+      if (!Number.isFinite(value)) throw new TypeError('Invalid playback position');
+      const fraction = Math.min(1, Math.max(0, value));
+      const at = mode === 'tour' ? tourTime(fraction * tourPlan.durationMs) : first + fraction * (last - first);
+      return this.seek(at, {before: fraction === 0});
     },
     restart() {
       if (destroyed) return state();

@@ -34,16 +34,16 @@ _ARTIFACTS = {
     "validation": ("validation.json", "application/json"),
 }
 _ERROR_MESSAGES = {
-    400: ("invalid_request", "Проверьте поля запроса."),
-    403: ("forbidden_origin", "Запрос разрешён только со страницы Hotel на этом компьютере."),
-    404: ("not_found", "Запись или страница не найдена."),
-    405: ("method_not_allowed", "Этот способ запроса не поддерживается."),
-    409: ("conflict", "Состояние уже изменилось. Обновите страницу и проверьте действие."),
-    411: ("length_required", "Не указан размер запроса."),
-    413: ("request_too_large", "Сообщение слишком большое."),
-    415: ("unsupported_media_type", "Ожидается запрос в формате JSON."),
-    500: ("internal_error", "Не удалось выполнить запрос. Попробуйте ещё раз."),
-    503: ("service_unavailable", "Интерфейс или сервис ещё недоступен. Проверьте запуск Hotel."),
+    400: ("invalid_request", "Check the request fields."),
+    403: ("forbidden_origin", "Requests are allowed only from the Hotel page on this computer."),
+    404: ("not_found", "The record or page was not found."),
+    405: ("method_not_allowed", "This request method is not supported."),
+    409: ("conflict", "The state has changed. Refresh the page and review the action."),
+    411: ("length_required", "The request size was not provided."),
+    413: ("request_too_large", "The request is too large."),
+    415: ("unsupported_media_type", "A JSON request is required."),
+    500: ("internal_error", "The request could not be completed. Try again."),
+    503: ("service_unavailable", "The interface or service is not ready. Check that Hotel has started."),
 }
 
 
@@ -424,7 +424,7 @@ def create_server(service, *, host: str = "127.0.0.1", port: int = 8765,
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Локальная демонстрация Hotel с Cerebras API")
+    parser = argparse.ArgumentParser(description="Local Hotel demo powered by the Cerebras API")
     parser.add_argument("--host", choices=sorted(_LOOPBACK_HOSTS), default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--static-dir", type=Path)
@@ -447,7 +447,7 @@ def main(argv: list[str] | None = None) -> int:
                 server = create_server(HotelService(), host=args.host, port=args.port,
                                        static_dir=args.static_dir, replay_manager=replays)
                 print(f"Hotel: http://{args.host}:{server.server_port}", flush=True)
-                print("Cerebras настроен. Подключение проверяется при первом сообщении.", flush=True)
+                print("Cerebras is configured. The connection will be checked when you send the first message.", flush=True)
                 try:
                     server.serve_forever(poll_interval=0.25)
                 except KeyboardInterrupt:
@@ -466,7 +466,7 @@ def main(argv: list[str] | None = None) -> int:
         print(str(exc), file=sys.stderr)
         return 2
     except (OSError, ValueError):
-        print("Не удалось запустить Hotel. Проверьте порт и параметры запуска.", file=sys.stderr)
+        print("Could not start Hotel. Check the port and startup options.", file=sys.stderr)
         return 2
 
 
