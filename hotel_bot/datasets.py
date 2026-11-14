@@ -51,7 +51,7 @@ def _fail(code, message, status=400):
     raise DatasetImportError(code, message, status)
 
 
-def _json(raw):
+def _json(raw, *, allow_bom=True):
     def pairs(values):
         result = {}
         for key, value in values:
@@ -69,7 +69,7 @@ def _json(raw):
             raise ValueError("Non-finite JSON value")
         return parsed
 
-    return json.loads(raw.decode("utf-8-sig"), object_pairs_hook=pairs,
+    return json.loads(raw.decode("utf-8-sig" if allow_bom else "utf-8"), object_pairs_hook=pairs,
                       parse_constant=invalid, parse_float=finite_float)
 
 
@@ -251,13 +251,19 @@ class DatasetRegistry:
                 _fail("unsupported_hotel_layout", "This 3D demo supports the PLATO40 rooms R101–R110, R201–R210, R301–R310 and R401–R410. Room floors must match their IDs.")
             ZoneInfo((building.get("time") or {}).get("local_timezone") or "Europe/Vienna")
             with (data / "events.jsonl").open("rb") as stream:
+                first_line = True
                 while line := stream.readline(4_000_001):
                     check()
                     if len(line) > 4_000_000:
                         raise ValueError
+                    # Match the loader's file-level decoder, including an
+                    # initial BOM followed by blank lines. Keep stored bytes.
+                    if first_line:
+                        line = line.removeprefix(codecs.BOM_UTF8)
+                        first_line = False
                     if not line.strip():
                         continue
-                    event = _json(line)
+                    event = _json(line, allow_bom=False)
                     if not isinstance(event, dict) or not isinstance(event.get("event_id"), (str, int)):
                         raise ValueError
                     parse_ts(event["timestamp_utc"])
