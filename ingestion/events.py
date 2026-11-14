@@ -93,7 +93,8 @@ def _parse_guest_requests(repo: "ReplayData", records: list[dict]
         from . import guest_parser
     except Exception as exc:  # parser module missing/broken must not stop replay
         log.warning("guest_parser unavailable (%s); using source labels", exc)
-        return [source_label_intents(r) for r in records]
+        method = "source_label" if repo.use_llm is False else "fallback"
+        return [source_label_intents(r, method=method) for r in records]
     results: list[Any] | None = None
     try:
         if repo.use_llm is not False:

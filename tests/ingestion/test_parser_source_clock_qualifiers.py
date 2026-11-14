@@ -109,3 +109,37 @@ def test_spanish_date_before_earlier_checkin_still_keeps_explicit_at_clock_gramm
     rows,uncertain=spanish('Mañana quisiéramos hacer el check-in antes a las 10:20 en punto.',quote)
     assert rows[0]['requested_time_utc']=='2028-07-05T08:20:00Z'
     assert not rows[0]['needs_review'] and not uncertain
+
+
+@pytest.mark.parametrize('offset', ['+5', '-04', '−530', '+0930', '-930', '+ 04:45', '− 7 : 15', '+ 09 30'])
+@pytest.mark.parametrize('scope', ['clock', 'clock_offset', 'dated_phrase'])
+def test_bare_source_offsets_are_never_silently_interpreted_as_vienna(offset, scope):
+    phrase = f'2029-04-16 at 14:25 {offset}'
+    quote = {'clock': '14:25', 'clock_offset': f'14:25 {offset}', 'dated_phrase': phrase}[scope]
+    rows, uncertain = interpret(f'Could we check in on {phrase}?', quote, language='en')
+    assert rows[0]['requested_time_utc'] is None and rows[0]['needs_review']
+    assert 'requested_time_utc' in uncertain
+
+
+@pytest.mark.parametrize('scope', ['clock', 'at_clock', 'whole_clock_phrase', 'whole_sentence'])
+def test_spanish_exact_at_clock_does_not_depend_on_quote_including_earlier_word(scope):
+    text = '¿Podemos hacer el check-in antes a las 09:45 en punto el 2029-04-16?'
+    quote = {'clock': '09:45', 'at_clock': 'a las 09:45',
+             'whole_clock_phrase': 'antes a las 09:45', 'whole_sentence': text}[scope]
+    rows, uncertain = interpret(text, quote, language='es')
+    assert rows[0]['requested_time_utc'] == '2029-04-16T07:45:00Z'
+    assert not rows[0]['needs_review'] and not uncertain
+
+
+@pytest.mark.parametrize('quote', ['14:25', '2029-04-16 at 14:25'])
+def test_date_hyphens_are_not_global_bare_offset_evidence(quote):
+    rows, uncertain = interpret('Could we check in on 2029-04-16 at 14:25?', quote, language='en')
+    assert rows[0]['requested_time_utc'] == '2029-04-16T12:25:00Z'
+    assert not rows[0]['needs_review'] and not uncertain
+
+
+def test_unrelated_offset_in_another_clause_does_not_attach_to_selected_clock():
+    text = 'Our flight clock is 07:10 +0530. Could we check in on 2029-04-16 at 14:25?'
+    rows, uncertain = interpret(text, '2029-04-16 at 14:25', language='en')
+    assert rows[0]['requested_time_utc'] == '2029-04-16T12:25:00Z'
+    assert not rows[0]['needs_review'] and not uncertain

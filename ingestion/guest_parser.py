@@ -35,7 +35,7 @@ from ingestion.request_polarity import declined_intents
 __all__ = ["parse_request", "parse_request_full", "parse_requests_batch"]
 
 LOGGER = logging.getLogger(__name__)
-PARSER_VERSION = "1.2.5"  # source clock grammar and declined-service review guards
+PARSER_VERSION = "1.2.6"  # source clock grammar and declined-service review guards
 PROMPT_VERSION = "guest-semantics-v2"
 MAX_RESPONSE_BYTES = 2_000_000
 MAX_INTENTS = 32
@@ -610,6 +610,13 @@ def _surrounding_time_qualifiers(quoted: str, evidence: str, original: str, *, l
         # Read nearby grammatical qualifiers, not a different clause elsewhere
         # in the message (e.g. "after checkout, can we arrive at 13:00?").
         qualifier_match = re.search(r"\b" + qualifier + r"\s+(?:(?:about|around|approximately|etwa|circa|environ)\s+)?$", prefix)
+        # Offset evidence belongs to the actual source clock, not the end of
+        # the model's selected quote (which can include the offset itself).
+        for source_clock in re.finditer(_CLOCK_TOKEN, original, re.I):
+            if source_clock.end() <= start or source_clock.start() >= end:
+                continue
+            if re.match(r"\s*[+\-−]\s*\d", original[source_clock.end():]):
+                bound = True
         spanish_exact = []
         if language == "es":
             # Exempt only explicit AT-clock grammar, not every occurrence of
@@ -673,6 +680,11 @@ def _resolve_time(item: GuestIntentV1, record: Mapping[str, Any], safe: Mapping[
         quoted, item.evidence_quote or "", str(record.get("text") or ""),
         language=language, message_time=message_time)
     clock_text = _clock_text_without_german_date_preposition(quoted, language)
+    if language == "es":
+        # The same exact AT-clock grammar is valid in narrow and full quotes.
+        # Keep bare/de thresholds and all other vague qualifiers untouched.
+        clock_text = re.sub(r"\b(?:antes|despues)(?=\s+a\s+las?\s+" + _CLOCK_TOKEN + r")",
+                            "", _fold(clock_text), flags=re.I)
     clock_text += " " + source_period if source_period else ""
     clock, approximate = _clock(clock_text)
     approximate = approximate or nearby_approximate

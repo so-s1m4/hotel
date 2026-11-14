@@ -49,9 +49,9 @@ underlying request labels were all wrong.
 Dev100 improves many single-request cases but omits independent requests and
 misclassifies two service refusals without requesting review. Synthetic100 finds
 both expected labels in all six multiple-request diagnostics, but three cases
-still fail complete formatting/time/review checks. No globally unreviewed wrong
-label, returned time or omission was found in its failed diagnostic cases by
-the recorded semantic audit. This observation does not guarantee future safety.
+still fail complete formatting/time/review checks. All 17 failed Synthetic100
+cases have the extraction review flag set in the retained primary reports.
+That observable metadata does not prove semantic correctness or future safety.
 
 The [compact comparison receipt](reviews/local_model_primary_comparison.json)
 records source, input, report and checkpoint identities without guest text.
@@ -65,8 +65,15 @@ examples. Synthetic TRAIN has 240 single-request and 24 two-request examples,
 covering only two intent pairs. Existing VALID has no multiple-request examples.
 Adding repetitions alone does not establish broader semantic coverage.
 
-A split-preserving Dev+synthetic mixture with separately reviewed TRAIN-only
-compositions is under preparation. Original VALID remains separate; Dev31 and
+A fresh-base Mixed200 candidate is training on a split-preserving mixture:
+425 original TRAIN examples plus 68 separately reviewed TRAIN-only compositions.
+The compositions are 34 forward/reverse pairs derived from 46 existing synthetic
+TRAIN rows, not 68 independent new scenarios. Repeating them twice gives 561
+training exposures and 493 unique inputs. All 48 original VALID examples remain
+separate; the mixture contains no TEST rows. Exact native token checks found a
+maximum of 1,510 tokens within the 1,536-token limit, with no target truncation.
+The preselected endpoint is step 200; intermediate checkpoints are not candidates
+to select using diagnostic answers. Dev31 and
 the independently authored final multiple-request set remain reserved for one
 selected, frozen configuration. Test examples must never become training data.
 Training completion, lower validation loss and adapter load success are not
@@ -78,6 +85,14 @@ The engine uses mock actuation and separate approval/consent checks. A full live
 Quickstart and Dev replay with the selected final model is still required, with
 raw-response accounting and independent output validation. Existing historical
 submission artifacts do not represent these new adapters.
+
+The engine is not a general dispatcher for every extracted guest-service label.
+Guest-driven turnaround currently starts from source requests labelled
+`early_checkin` or `waiting_for_room`; a secondary extracted request does not
+automatically start another service workflow. Wi-Fi, towels and other extracted
+labels have no general guest-service dispatcher. Telemetry detectors operate
+independently. Extraction coverage must not be reported as completed service
+fulfilment.
 
 The organizer Holdout, final submission and demo recording remain separate
 release tasks. No statement here certifies them as complete.
