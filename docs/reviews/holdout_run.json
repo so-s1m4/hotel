@@ -1,0 +1,186 @@
+{
+  "type": "completed_unchanged_cerebras_holdout_run",
+  "report_written_utc": "2026-11-14T12:08:41.431719+00:00",
+  "runtime": {
+    "frozen_commit": "bff983d229b77f94b9819ddc8d6c9a2c26b8768e",
+    "frozen_tree": "bf0c353c93eb3720c099297bc81ea22a1de5c9b7",
+    "pre_holdout_tag_object": "58bc29e82fb9b086f3d7e5d36b81ceb2df83ddc1",
+    "entrypoint": "Existing hotel_bot.replay.ReplayManager using normal import_dataset/start under load_cerebras_config().environment()",
+    "mode": "existing_website_ReplayManager",
+    "enable_guest_services": true,
+    "engine_config_overrides": {},
+    "settings": {
+      "provider": "cerebras",
+      "model": "gpt-oss-120b",
+      "base_url": "https://api.cerebras.ai/v1",
+      "response_format": "json_schema",
+      "generation_profile": "extraction",
+      "reasoning_effort": "low",
+      "max_completion_tokens": 4096,
+      "timeout_seconds": 60,
+      "workers": 1,
+      "offline": false
+    },
+    "source_modified": false,
+    "tracked_file_count": 250,
+    "all_tracked_file_hashes_unchanged": true,
+    "source_hash_manifest_sha256": "f27cb670b3be3533610ba4c81bf6d04049ca5dfa520e6616bdaed78406dfc1f1"
+  },
+  "first_holdout_use": {
+    "mode": "offline source-label CLI diagnostic without --llm",
+    "started_utc": "2026-11-14T11:32:28.671212+00:00",
+    "finished_utc": "2026-11-14T11:34:09.470726+00:00",
+    "exit_code": 0,
+    "events": 65691,
+    "decisions": 7544,
+    "model_calls": 0,
+    "local_preservation": "outputs/holdout-run-bff983d/offline-diagnostic/",
+    "decisions_sha256": "c302155de01ab63a1d988d94c0e221c262335bbb7d535189548bfa421d706d78",
+    "audit_sha256": "4cf3486d02f1f9d3a136dde64cdb67348fc71ec1eefd3fde3214f383a106c1a6",
+    "attribution": "Initial mode-selection error; preserved separately and not relabeled as the primary API run."
+  },
+  "primary_run": {
+    "job_id": "replay-3205dc5524b1474b9c54386d97afa4f5",
+    "dataset_id": "dataset-502889f1223830e2daefbc628f8427eef88adca4f9e70bb48e28cb68a8c46253",
+    "started_utc": "2026-11-14T11:46:27.490036+00:00",
+    "finished_utc": "2026-11-14T12:04:14.386073+00:00",
+    "elapsed_seconds": 1066.896,
+    "exit_code": 0,
+    "status": "completed",
+    "complete": true,
+    "progress": {
+      "events_processed": 65691,
+      "total_events": 65691,
+      "guest_processed": 1534,
+      "total_guests": 1534,
+      "decisions": 8986,
+      "audit_rows": 8986,
+      "as_of_utc": "2026-12-31T23:45:00Z",
+      "llm_count": 1534,
+      "fallback_count": 0,
+      "source_label_count": 0,
+      "parser_errors": 0,
+      "source_errors": 0,
+      "needs_review_count": 234,
+      "autonomous_count": 8583,
+      "pending_approval_count": 403,
+      "safety_rejections": 0
+    },
+    "model_usage": {
+      "builtin_llm_count_includes_cache": true,
+      "builtin_fresh_api_calls_measured": false,
+      "separate_official_endpoint_attempts": {
+        "attempts": 1534,
+        "first_attempt_utc": "2026-11-14T11:46:33.462577+00:00",
+        "last_attempt_utc": "2026-11-14T12:04:12.458855+00:00"
+      },
+      "observer": "Python audit hook counts endpoint attempts only; no transport replacement or payload/header logging",
+      "scope": "HTTP attempt counts, not billing, token usage or independent accuracy."
+    },
+    "effects_applied": false,
+    "observed_history_changed": false,
+    "accuracy_measured": false
+  },
+  "inputs": {
+    "files_sha256": {
+      "building.json": "6a877dd7a9a786adbe46f9cd453385c3b483b5d1233350bb4ce89cc4c04a94da",
+      "manifest.json": "0454ef856c248312851797eb3f691f28a28b03a379a7ad9e6bc4e9cb5f0f4b70",
+      "bookings.csv": "03e20d8262090b4740092fb7309922c8a68f7a5e348c4bd4c60eeee6c4642dc3",
+      "access_log.csv": "8eb9e2e94c89c11505b38c79b108172a5c2d5f9d033d0b5a946a24a3a8ccd2e4",
+      "room_telemetry.csv": "c26d5f35926be6a9e951d02315e64a4c97df2c74b93441faa96fd671d53caa38",
+      "room_water.csv": "2078224cb1374a52b47e68a8cd1ba13db8080fbb4d7d20dec10f12dd3f6ab067",
+      "water_main.csv": "3d0b1bda23c88020935407bb9e81d5c872265ae66fdb68d28308b85717154bc3",
+      "energy.csv": "8992d4f12a7ea5e3be612792a211675bb7608bd96da3d82760d90d565a442ae6",
+      "weather.csv": "15dcf06132c67decc0f266a9ce784ba269f2fa1f89676f05d0249f49014216c1",
+      "weather_forecast.csv": "58ea7fa2078780b9792a286696b0cf01291ecec3b7efb36ecdf0a11652f926ce",
+      "tariff.csv": "a36380ff484fd33237eb64a04c1449fb72f53fb666f7523e5d599067338cbae9",
+      "equipment.csv": "a2e03d5284b94dea91ef92a7eb57491e1474f5ed793ea8e70f283446b8764c32",
+      "logistics.csv": "438145cda8a8dd862b516904667edc83e22eb226886acb81cb1cc97ecd7278cb",
+      "staff_roster.csv": "7e185bbb1fc2b01b521db9f7514f0e5251d36107504c13f1d38dae58698ecbc4",
+      "work_orders.csv": "d16ca58a2be3582dcdcae12bbc6e16632129f008105f4da828411bb1151cb477",
+      "guest_requests.csv": "4c6041f19517b53fd113cbf8adfbfc52e80d491f0b4225dd73f54b2a67086764",
+      "events.jsonl": "d34b6d380552ceefa383558137f182f3f86d7a3f7ea007a3d0f5f0f7f2b47577"
+    },
+    "all_17_original_files_unchanged": true,
+    "all_17_imported_files_byte_identical": true,
+    "encrypted_archive_sha256": "50a8c87d0a41a6d18d081cbce6e0308ff4f8dc923f0bc11d5d513ca7d7b14f88",
+    "decrypted_zip_sha256": "6826b25ca028247ae14f9cbd78a106235a0fb1f787a7bea05f2426b469845f68",
+    "archives_unchanged": true,
+    "password_recorded": false
+  },
+  "artifacts": {
+    "decisions": {
+      "path": "decisions_holdout.jsonl",
+      "sha256": "203f98fcc773ee3b46c691fd126508aa782a72067fc7540fbe9cd7cc884f024b",
+      "bytes": 15064626,
+      "rows": 8986
+    },
+    "audit": {
+      "path": "decisions_holdout_audit.jsonl",
+      "sha256": "1314d5a06040f299b1adb66672bbb19f243966aa0dbd049dfd44fb88a8258a5c",
+      "bytes": 3259182,
+      "rows": 8986
+    },
+    "rejections": {
+      "path": "decisions_holdout_rejections.jsonl",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "rows": 0
+    }
+  },
+  "validation": {
+    "report": "docs/reviews/holdout_validation.json",
+    "sha256": "dc6f8eab34c6484d1e5c8e641fdc1e34def30c57febf510a53144b3fe9c7a78c",
+    "valid": true,
+    "error_count": 0,
+    "issue_counts": {},
+    "stats": {
+      "audit_rows": 8986,
+      "cancellation_targets": 32,
+      "decision_rows": 8986,
+      "duplicate_exact_notifications": 0,
+      "jobs_cancelled_before_start": 32,
+      "joined_decisions": 8986,
+      "live_intervals": 2990,
+      "live_pending_intervals": 9,
+      "observed_equal_time_ties": 0,
+      "resource_overlap_pairs": 0,
+      "room_overlap_pairs": 0,
+      "valid_unique_decisions": 8986
+    },
+    "scope": "File-level consistency/scheduling audit only; no ground-truth precision, recall, savings or real-world safety certification.",
+    "independent_frozen_validator": {
+      "command": "python -m engine.validation --data-dir <original-holdout> --decisions decisions_holdout.jsonl --audit decisions_holdout_audit.jsonl --out <independent-report>",
+      "exit_code": 0,
+      "started_utc": "2026-11-14T12:04:36Z",
+      "finished_utc": "2026-11-14T12:04:46Z",
+      "elapsed_seconds": 0.212,
+      "source_sha256": "ce34f4818f6b05897ab3d6d292a88d4001bd13a815f3ae4e61578933aac6aa96",
+      "semantic_json_equal_to_manager_report": true
+    }
+  },
+  "archive_integrity": {
+    "summary_sha256": "6cd6925d4e44698186bb5266c2aeb475eb1c06108bd8fd1e71c2bb8a576da7b8",
+    "journal_sha256": "810413c8ada013397aa4fc2cbf517a58998ed3943d08179d3f1ef07d358da43b",
+    "journal_rows": 10522,
+    "terminal_kind": "replay_finished",
+    "terminal_status": "completed",
+    "terminal_complete": true,
+    "terminal_summary_sha256_matches": true,
+    "root_submission_byte_identical_to_replaymanager_artifacts": true
+  },
+  "presentation": {
+    "url": "http://127.0.0.1:8765/?replay=replay-3205dc5524b1474b9c54386d97afa4f5",
+    "verified": "Saved Holdout opened in restored English UI; Play advanced time/event counts/occupancy/decisions and Pause stopped it. No Prepare or Send action was invoked.",
+    "interface_commit": "c23d3a0edc49231800363b6dc636b880a1b4e5ee",
+    "interface_receipt": "docs/reviews/interface_restore.json",
+    "separate_from_frozen_runtime": true
+  },
+  "limits": [
+    "Model/parser accuracy was not independently measured on the Holdout.",
+    "234 guest extractions carry review flags; zero fallbacks does not mean every intent is correct.",
+    "403 pending-approval count covers emitted pending audits, not active pending tasks at the end.",
+    "All actions are simulated; no delivery, repair, physical effects or measured savings are claimed.",
+    "Post-freeze frontend restoration and English copy were isolated from this bff runtime; pre-holdout was not moved after processing began."
+  ]
+}

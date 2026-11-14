@@ -6,10 +6,10 @@ Occupancy and readings come from the dataset. The architecture, characters, and
 their activities are illustrative, not measured coordinates or human behavior. All
 40 source rooms appear on one level with reception, a waiting area, and a housekeeping
 room. This is a convenient overview layout; source IDs and floor numbers in the data
-are unchanged. Walls are 2.6 m high and 20 cm thick; door and window openings are
-preserved, and the roof is open for viewing. On a wide screen, the hotel is on the
-left, the manager's phone on the right, and guest messages below the hotel. Actions
-remain simulated.
+are unchanged. The restored scene uses low cutaway walls, 20 cm thick, so room
+activities remain visible. The roof is open for viewing. On a wide screen, the
+hotel is on the left and the manager's phone is on the right. Use **Requests** on
+the phone to inspect guest messages. Actions remain simulated.
 
 ## Current interface snapshot and provenance
 
@@ -22,9 +22,16 @@ frontend passed 68 JavaScript tests and its build succeeded.
 
 This UI restoration and the English-string updates were made after the frozen
 `bff983d` Holdout runtime. They are presentation changes and are not part of that
-runtime or its currently running primary Cerebras Holdout job. The earlier offline
-diagnostic is a separate run; it is not a Holdout result. Final Holdout results are
-not recorded here and will be added after the primary run completes.
+runtime or its completed primary Cerebras Holdout job. The earlier offline
+diagnostic is retained separately and is not the primary API submission. The
+completed run contains 65,691 events, 1,534 guest messages and 8,986 decisions;
+both validators report zero errors. See [run provenance](reviews/holdout_run.json)
+and [validation](reviews/holdout_validation.json).
+
+[Open the saved Holdout](http://127.0.0.1:8765/?replay=replay-3205dc5524b1474b9c54386d97afa4f5)
+and use **Play**. It is already prepared; **Prepare again** would start another
+model/engine run. Playback was checked with advancing time, occupancy and
+decisions, followed by Pause.
 
 ## Run
 

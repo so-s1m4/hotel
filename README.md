@@ -64,10 +64,14 @@ An offline operations prototype for the fictional PLATO-40: causal replay → ri
 waste, and vending. Real Quickstart and Dev datasets run without an API key.
 Historical observations are not changed, messages are not treated as delivered,
 and actions do not control a real building. **Historical status:** at checkpoint
-`bff983d`, the organizer Holdout had not been opened. The primary authorized
-Holdout run is now in progress; an earlier offline diagnostic is a separate run.
-No final Holdout result is claimed here; completion facts will be updated after
-the primary run finishes.
+`bff983d`, the organizer Holdout had not been opened. The authorized primary
+Cerebras Holdout run has now completed on that unchanged snapshot: **65,691
+events, 1,534 guest messages, and 8,986 decisions**. Both the built-in and
+independent frozen validator report zero errors. The earlier offline diagnostic
+is preserved separately; it is not the primary API result.
+[Run provenance and hashes](docs/reviews/holdout_run.json),
+[validation](docs/reviews/holdout_validation.json),
+[submission decisions](decisions_holdout.jsonl).
 
 [Independent review and remaining limitations](docs/reviews/RESOLUTION.md).
 [Algorithms and assumptions](docs/ENGINE.md). [Measured annual analysis](insights.md).
@@ -228,10 +232,12 @@ that "the core did not change after 11:00."
 had not been decrypted, unpacked, or run. Its examples, labels, and results had
 not been used for training, rule/threshold/prompt tuning, or model selection.
 `decisions_holdout.jsonl` had not yet been created, and no Holdout result was
-claimed at that checkpoint. The primary authorized Holdout run is now in
-progress. An earlier offline diagnostic was a separate run and is not the
-primary Holdout run or its result. No final Holdout result is claimed here;
-completion facts will be updated after the primary run finishes.
+claimed at that checkpoint. The first use was an offline diagnostic at
+11:32:28 UTC on November 14. The primary Cerebras run then completed from
+11:46:27 to 12:04:14 UTC using the same frozen code. Neither run was used
+for training, model selection, prompt/threshold tuning, or engine/parser changes.
+Their modes and artifacts are recorded separately in
+[the run receipt](docs/reviews/holdout_run.json).
 
 The work relied on the participant-accessible, **separate Quickstart and Dev**
 datasets, synthetic regression fixtures, and independently repeatable source
@@ -360,12 +366,30 @@ replaces the actual unchanged Holdout run and its artifacts.
 
 ## Submission and licenses
 
-The unchanged primary run on the separate Holdout and a real
-`decisions_holdout.jsonl` are currently in progress. The earlier offline
-diagnostic is separate and is not treated as the primary Holdout run. No result
-is fabricated here; completion facts will be recorded after the primary run
-finishes. The original pre-release tag is preserved, and the actual move of the
-current `pre-holdout` tag and all differences are disclosed above.
+The unchanged primary Cerebras run on the separate Holdout is complete.
+`decisions_holdout.jsonl` and `decisions_holdout_audit.jsonl` each contain
+8,986 records; the rejection file is empty. All 1,534 guest messages have
+`method=llm`, with zero fallback/source-label extractions or parser/source
+errors. A separate Python audit hook observed 1,534 official-endpoint HTTP
+attempts; built-in LLM counters alone remain cache-inclusive. There are
+234 extraction review flags, 8,583 autonomous decisions, and 403 emitted
+pending-approval audits. These are processing counts, not accuracy scores
+or a final active-pending total.
+
+The independent validator found zero resource/room overlaps and exact duplicate
+notifications. All 250 frozen tracked files, 17 original inputs, 17 imported
+copies, and both archives retained their recorded hashes. The journal terminal
+marker binds the completed summary. [Full provenance](docs/reviews/holdout_run.json)
+and [validation](docs/reviews/holdout_validation.json) bind the submitted files.
+The earlier offline diagnostic is retained separately. The original pre-release
+tag is preserved, and the actual move of the current `pre-holdout` tag and all
+differences are disclosed above; no tag was moved after Holdout processing began.
+
+The completed run can be played locally in the restored English UI at
+[Open saved Holdout](http://127.0.0.1:8765/?replay=replay-3205dc5524b1474b9c54386d97afa4f5).
+Play/Pause were checked with moving time, occupancy and engine decisions.
+Playing saved results does not repeat model inference. The frontend restoration
+and English-copy commit `c23d3a0` is separate from the frozen runtime.
 
 A real three-minute video and final demonstration are also still required for
 the submission; the [recording scenario](docs/DEMO.md) is not a recorded video.
