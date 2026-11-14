@@ -1,0 +1,944 @@
+{
+  "report_type": "sanitized post-tag README evidence candidate; provisional, for root review",
+  "captured_utc": "2026-11-14T11:00:00Z",
+  "original_pre_holdout_tag": {
+    "name": "pre-holdout",
+    "tag_object_oid": "9a2c3288c47e5f5a826f86f59e0c3b6d4131b067",
+    "peeled_commit_oid": "4987c7fb4e05b94e89ef6cfa894e0588b895774d",
+    "tagger_date": "2026-11-13T22:48:46+0100",
+    "tag_commit_date": "2026-11-13T22:44:11+01:00",
+    "tag_message": "Verified offline engine, 1026 tests and reproducible Quickstart/Dev before holdout"
+  },
+  "source_pins": {
+    "baseline_866": {
+      "commit": "866a448455e5b6dce811302dc2901bb4c48f0136",
+      "tree": "246fcc6488149129bfb79b823ced114aeb1b61aa",
+      "committer_date": "2026-11-14T09:24:44+01:00",
+      "subject": "Add autonomous Hotel demo, dataset playback and ZIP import"
+    },
+    "candidate_9d62448": {
+      "commit": "9d62448c2f51315f44e89604ffd48a97ecf83d6d",
+      "tree": "55e67abfd23da5c5f174b0620c14f0811853c6bb",
+      "committer_date": "2026-11-14T11:49:03+01:00",
+      "subject": "Match human housekeeping observations across on-call roles"
+    }
+  },
+  "runs": {
+    "quickstart": {
+      "source_pin": {
+        "baseline": {
+          "commit": "866a448455e5b6dce811302dc2901bb4c48f0136",
+          "tree": "246fcc6488149129bfb79b823ced114aeb1b61aa",
+          "committer_date": "2026-11-14T09:24:44+01:00",
+          "subject": "Add autonomous Hotel demo, dataset playback and ZIP import"
+        },
+        "candidate": {
+          "commit": "9d62448c2f51315f44e89604ffd48a97ecf83d6d",
+          "tree": "55e67abfd23da5c5f174b0620c14f0811853c6bb",
+          "committer_date": "2026-11-14T11:49:03+01:00",
+          "subject": "Match human housekeeping observations across on-call roles"
+        }
+      },
+      "dataset_input_count": 17,
+      "dataset_input_sha256": {
+        "access_log.csv": "699c541d806ed504b87208161d1df5b48d6578fdb38a7948b7fef4c803664e5a",
+        "bookings.csv": "5db9a52e9591f7f92bc5d090316d27c244305552c1a11ec7f1e8f03573a4fae5",
+        "building.json": "2f58f307c7c0c85628720f5b73777efa10833ea2e0c88711befc2db96f3cbe17",
+        "energy.csv": "a425cf9f683a519688c386711a58f444096846d079ef1b3d3ef52faadee04025",
+        "equipment.csv": "1c3198681e7ce4682832697aea01fb112dde0cb8093858b4f1aa15f582dd2259",
+        "events.jsonl": "96754ab1ee4505a71bbc791888df03c6a539168d1202f8b701515614a6c0776f",
+        "guest_requests.csv": "c54bfbda5c74676c9e966142c430397576d6f57bd377a180689e267b02afd532",
+        "logistics.csv": "9efb76fe2071fd669359f5197498608f1d9aa30a60d17bf5ffacfcb7178ea88c",
+        "manifest.json": "fe07a0995a5b596cda8e05e87446abb360452ae2f375a260eeb050d456274d44",
+        "room_telemetry.csv": "19c4a8bd0c1b9f6f36ec1091776a08596b778e5057ed88d70cf3a57b20516e3d",
+        "room_water.csv": "fe7cbbfe5920c82b6533547e4248600a74e5626c6746aebe7c2ba98a5d1bdb3c",
+        "staff_roster.csv": "935de29e596f4f9fd7f60a0676169225124181e242b8a0f36a50038c6415c6a6",
+        "tariff.csv": "499abd970e6e1fb50049f5be9faf9476b95161cc34b214d94d661398ed8f508b",
+        "water_main.csv": "f03fd5b462d498c238afe02de1565843447e9ead17e551c539f34a672f656d55",
+        "weather.csv": "212c700f9ca63ac854ad7805b9d267608bcd208c156827cbc79001f3d366c2a3",
+        "weather_forecast.csv": "9279df57469992e665d9e3c39217bc0a8d69b87b072ec76420c0f0f4eb08cdec",
+        "work_orders.csv": "836b7859b1eb0dce599ddea281aede5d02b73957718b2d6ec00cace4911284e3"
+      },
+      "input_hashes_equal_baseline_candidate_and_current": true,
+      "replay_commands": {
+        "baseline": [
+          {
+            "command": [
+              ".venv/bin/python",
+              "run.py",
+              "--data-dir",
+              "data/PLATO40_v2_quickstart",
+              "--out",
+              "outputs/operator-audit-866/quickstart/decisions.jsonl",
+              "--audit",
+              "outputs/operator-audit-866/quickstart/audit.jsonl"
+            ],
+            "exit_code": 0,
+            "elapsed_seconds": 5.061,
+            "started_utc": "2026-11-14T10:19:45.501079+00:00",
+            "ended_utc": "2026-11-14T10:19:50.562158+00:00"
+          },
+          {
+            "command": [
+              ".venv/bin/python",
+              "-m",
+              "engine.validation",
+              "--data-dir",
+              "data/PLATO40_v2_quickstart",
+              "--decisions",
+              "outputs/operator-audit-866/quickstart/decisions.jsonl",
+              "--audit",
+              "outputs/operator-audit-866/quickstart/audit.jsonl",
+              "--out",
+              "outputs/operator-audit-866/quickstart/validation.json"
+            ],
+            "exit_code": 0,
+            "elapsed_seconds": 0.078,
+            "started_utc": "2026-11-14T10:19:50.562439+00:00",
+            "ended_utc": "2026-11-14T10:19:50.640899+00:00"
+          }
+        ],
+        "candidate": [
+          {
+            "command": [
+              ".venv/bin/python",
+              "run.py",
+              "--data-dir",
+              "data/PLATO40_v2_quickstart",
+              "--out",
+              "outputs/operator-audit-9d62448/quickstart/decisions.jsonl",
+              "--audit",
+              "outputs/operator-audit-9d62448/quickstart/audit.jsonl"
+            ],
+            "exit_code": 0,
+            "elapsed_seconds": 5.755,
+            "started_utc": "2026-11-14T10:50:25.314289+00:00",
+            "ended_utc": "2026-11-14T10:50:31.069792+00:00"
+          },
+          {
+            "command": [
+              ".venv/bin/python",
+              "-m",
+              "engine.validation",
+              "--data-dir",
+              "data/PLATO40_v2_quickstart",
+              "--decisions",
+              "outputs/operator-audit-9d62448/quickstart/decisions.jsonl",
+              "--audit",
+              "outputs/operator-audit-9d62448/quickstart/audit.jsonl",
+              "--out",
+              "outputs/operator-audit-9d62448/quickstart/validation.json"
+            ],
+            "exit_code": 0,
+            "elapsed_seconds": 0.086,
+            "started_utc": "2026-11-14T10:50:31.069848+00:00",
+            "ended_utc": "2026-11-14T10:50:31.155629+00:00"
+          }
+        ]
+      },
+      "replay_stdout_aggregate": {
+        "baseline": {
+          "status": "replay_complete",
+          "events": 3939,
+          "decisions": 342,
+          "safety_rejections": 0
+        },
+        "candidate": {
+          "status": "replay_complete (exit 0; validated outputs match baseline byte-for-byte)",
+          "events": 3939,
+          "decisions": 342,
+          "safety_rejections": null,
+          "event_count_evidence": "The candidate receipt retained only the stdout tail, not the event total; 3939 comes from preserved baseline CLI stdout. Candidate input hashes and decisions/audit bytes match exactly."
+        }
+      },
+      "decision_aggregate_counts": {
+        "baseline": {
+          "rows": 342,
+          "actions": {
+            "adjust_room_setpoint": 116,
+            "defer_action": 4,
+            "flag_anomaly": 11,
+            "notify_guest": 103,
+            "optimize_energy": 85,
+            "order_service": 5,
+            "request_inspection": 13,
+            "schedule_cleaning": 5
+          },
+          "issue_types": {
+            "data_quality": 1,
+            "energy_optimization": 105,
+            "heating_comfort": 159,
+            "heating_performance": 5,
+            "logistics": 6,
+            "occupancy_surge": 34,
+            "room_turnaround": 30,
+            "ventilation_maintenance": 1,
+            "water_leak": 1
+          }
+        },
+        "candidate": {
+          "rows": 342,
+          "actions": {
+            "adjust_room_setpoint": 116,
+            "defer_action": 4,
+            "flag_anomaly": 11,
+            "notify_guest": 103,
+            "optimize_energy": 85,
+            "order_service": 5,
+            "request_inspection": 13,
+            "schedule_cleaning": 5
+          },
+          "issue_types": {
+            "data_quality": 1,
+            "energy_optimization": 105,
+            "heating_comfort": 159,
+            "heating_performance": 5,
+            "logistics": 6,
+            "occupancy_surge": 34,
+            "room_turnaround": 30,
+            "ventilation_maintenance": 1,
+            "water_leak": 1
+          }
+        },
+        "equal": true
+      },
+      "validation": {
+        "baseline": {
+          "valid": true,
+          "error_count": 0,
+          "stats": {
+            "decision_rows": 342,
+            "valid_unique_decisions": 342,
+            "audit_rows": 342,
+            "joined_decisions": 342,
+            "cancellation_targets": 3,
+            "jobs_cancelled_before_start": 3,
+            "live_intervals": 87,
+            "live_pending_intervals": 2,
+            "resource_overlap_pairs": 0,
+            "room_overlap_pairs": 0,
+            "observed_equal_time_ties": 0,
+            "duplicate_exact_notifications": 0
+          }
+        },
+        "candidate": {
+          "valid": true,
+          "error_count": 0,
+          "stats": {
+            "decision_rows": 342,
+            "valid_unique_decisions": 342,
+            "audit_rows": 342,
+            "joined_decisions": 342,
+            "cancellation_targets": 3,
+            "jobs_cancelled_before_start": 3,
+            "live_intervals": 87,
+            "live_pending_intervals": 2,
+            "resource_overlap_pairs": 0,
+            "room_overlap_pairs": 0,
+            "observed_equal_time_ties": 0,
+            "duplicate_exact_notifications": 0
+          }
+        }
+      },
+      "output_sha256": {
+        "baseline": {
+          "decisions.jsonl": "6d180718ade0c4879e035279a5b8b4fc78dc4c909e4fb972e50714d8fe0f73d3",
+          "audit.jsonl": "24325609ef90a490aafdf529e28f09487464cbf280a3c3c06ac49838bfdb05f1"
+        },
+        "candidate": {
+          "decisions.jsonl": "6d180718ade0c4879e035279a5b8b4fc78dc4c909e4fb972e50714d8fe0f73d3",
+          "audit.jsonl": "24325609ef90a490aafdf529e28f09487464cbf280a3c3c06ac49838bfdb05f1"
+        }
+      },
+      "decisions_and_audit_hashes_equal_baseline_candidate": {
+        "decisions.jsonl": true,
+        "audit.jsonl": true
+      },
+      "receipt_input_hashes_unchanged": {
+        "baseline": true,
+        "candidate": true
+      }
+    },
+    "dev": {
+      "source_pin": {
+        "baseline": {
+          "commit": "866a448455e5b6dce811302dc2901bb4c48f0136",
+          "tree": "246fcc6488149129bfb79b823ced114aeb1b61aa",
+          "committer_date": "2026-11-14T09:24:44+01:00",
+          "subject": "Add autonomous Hotel demo, dataset playback and ZIP import"
+        },
+        "candidate": {
+          "commit": "9d62448c2f51315f44e89604ffd48a97ecf83d6d",
+          "tree": "55e67abfd23da5c5f174b0620c14f0811853c6bb",
+          "committer_date": "2026-11-14T11:49:03+01:00",
+          "subject": "Match human housekeeping observations across on-call roles"
+        }
+      },
+      "dataset_input_count": 17,
+      "dataset_input_sha256": {
+        "access_log.csv": "b1ed2219f1093c2ff22d2a13ec9c9f6b345a00cbff2b30505ab43b7f8a1f53f5",
+        "bookings.csv": "9738181653c6808875f9796f2cc3a1b2bd2b3f38be56b7b5e1dba8c05d3c9a6f",
+        "building.json": "671785fcc397b9f61811c4ae04cffdd49a5468621bf310f9424238512be397d3",
+        "energy.csv": "31dd0c2c7b351d1bea16fef68b72301212ee9820d1493f146f5d48e689cca6c3",
+        "equipment.csv": "a8406da126a33e03d5b29fb8faf78b92a18f6713163659ab597615d674dcb879",
+        "events.jsonl": "217d6211d872a450c884a9e421f5a84d50539049fe3807921d7addb5eaf1fc9b",
+        "guest_requests.csv": "85b16e40b7a28812f7a1fc50b7bf92a0693677ac0d42d46aaad8a6e112b500f7",
+        "logistics.csv": "720157ac43503d57b5e8a81e3c7cf47f89ff6ba80d2e627f717aaeafc74b0892",
+        "manifest.json": "73fb3c10d9531c3a11d12e13116122a6b598ab05fc3b07cb438ef718ecebfde2",
+        "room_telemetry.csv": "71278be6b629344f65e9bb469e39e7a061dd09d4028af524256f167ed7251ca8",
+        "room_water.csv": "009d42067301a01ca073228ceb307aa20eef58ab01861cd3ccf6e8fd2b41126b",
+        "staff_roster.csv": "436af432d59db36d8ae59d99e765feb61bc08d7d5622158e73e6982bd671d6ec",
+        "tariff.csv": "dcb6201d8de5e2725fbd37f29380d715157259ab2ec832eb268cbc8e18c12ca6",
+        "water_main.csv": "0d34e062b480c7da26ce660a7dd95720a70a897534350902d3927dfb56c45835",
+        "weather.csv": "a00d723c0ce66d5c1692df57dcbe8ecca6374b91defa8d042e8277eceb37cb6f",
+        "weather_forecast.csv": "d8804bb66476a3032dbb62ab76b552a442545948236cc7598bcd968174544279",
+        "work_orders.csv": "adb38bc9202606d1cd690a2da86c3c4ae8da031118134f6222b90ffc51a6fd8a"
+      },
+      "input_hashes_equal_baseline_candidate_and_current": true,
+      "replay_commands": {
+        "baseline": [
+          {
+            "command": ".venv/bin/python run.py --data-dir data/PLATO40_v2_dev --out outputs/operator-audit-866/dev/decisions.jsonl --audit outputs/operator-audit-866/dev/audit.jsonl",
+            "exit_code": 0,
+            "elapsed_seconds": 101.844,
+            "started_utc": "2026-11-14T10:19:45Z",
+            "ended_utc": "2026-11-14T10:21:38Z"
+          },
+          {
+            "command": ".venv/bin/python -m engine.validation --data-dir data/PLATO40_v2_dev --decisions outputs/operator-audit-866/dev/decisions.jsonl --audit outputs/operator-audit-866/dev/audit.jsonl --out outputs/operator-audit-866/dev/validation.json",
+            "exit_code": 0,
+            "elapsed_seconds": null,
+            "started_utc": "2026-11-14T10:19:45Z",
+            "ended_utc": "2026-11-14T10:21:38Z"
+          }
+        ],
+        "candidate": [
+          {
+            "command": ".venv/bin/python run.py --data-dir data/PLATO40_v2_dev --out outputs/operator-audit-9d62448/dev/decisions.jsonl --audit outputs/operator-audit-9d62448/dev/audit.jsonl",
+            "exit_code": 0,
+            "elapsed_seconds": 123.668,
+            "started_utc": "2026-11-14T10:50:04Z",
+            "ended_utc": "2026-11-14T10:52:26Z"
+          },
+          {
+            "command": ".venv/bin/python -m engine.validation --data-dir data/PLATO40_v2_dev --decisions outputs/operator-audit-9d62448/dev/decisions.jsonl --audit outputs/operator-audit-9d62448/dev/audit.jsonl --out outputs/operator-audit-9d62448/dev/validation.json",
+            "exit_code": 0,
+            "elapsed_seconds": null,
+            "started_utc": "2026-11-14T10:50:04Z",
+            "ended_utc": "2026-11-14T10:52:26Z"
+          }
+        ]
+      },
+      "replay_stdout_aggregate": {
+        "baseline": {
+          "status": "replay_complete",
+          "events": 65434,
+          "decisions": 7173,
+          "safety_rejections": 0
+        },
+        "candidate": {
+          "status": "replay_complete",
+          "events": 65434,
+          "decisions": 7173,
+          "safety_rejections": 0
+        }
+      },
+      "decision_aggregate_counts": {
+        "baseline": {
+          "rows": 7173,
+          "actions": {
+            "adjust_room_setpoint": 1032,
+            "defer_action": 91,
+            "flag_anomaly": 167,
+            "notify_guest": 2679,
+            "optimize_energy": 2964,
+            "order_service": 86,
+            "request_inspection": 149,
+            "schedule_cleaning": 5
+          },
+          "issue_types": {
+            "data_quality": 6,
+            "energy_optimization": 2997,
+            "heating_comfort": 3036,
+            "heating_performance": 2,
+            "logistics": 170,
+            "occupancy_surge": 764,
+            "room_turnaround": 190,
+            "ventilation_maintenance": 4,
+            "water_leak": 2,
+            "water_low_rate_review": 2
+          }
+        },
+        "candidate": {
+          "rows": 7173,
+          "actions": {
+            "adjust_room_setpoint": 1032,
+            "defer_action": 91,
+            "flag_anomaly": 167,
+            "notify_guest": 2679,
+            "optimize_energy": 2964,
+            "order_service": 86,
+            "request_inspection": 149,
+            "schedule_cleaning": 5
+          },
+          "issue_types": {
+            "data_quality": 6,
+            "energy_optimization": 2997,
+            "heating_comfort": 3036,
+            "heating_performance": 2,
+            "logistics": 170,
+            "occupancy_surge": 764,
+            "room_turnaround": 190,
+            "ventilation_maintenance": 4,
+            "water_leak": 2,
+            "water_low_rate_review": 2
+          }
+        },
+        "equal": true
+      },
+      "validation": {
+        "baseline": {
+          "valid": true,
+          "error_count": 0,
+          "stats": {
+            "decision_rows": 7173,
+            "valid_unique_decisions": 7173,
+            "audit_rows": 7173,
+            "joined_decisions": 7173,
+            "cancellation_targets": 5,
+            "jobs_cancelled_before_start": 5,
+            "live_intervals": 2964,
+            "live_pending_intervals": 0,
+            "resource_overlap_pairs": 0,
+            "room_overlap_pairs": 0,
+            "observed_equal_time_ties": 0,
+            "duplicate_exact_notifications": 0
+          }
+        },
+        "candidate": {
+          "valid": true,
+          "error_count": 0,
+          "stats": {
+            "decision_rows": 7173,
+            "valid_unique_decisions": 7173,
+            "audit_rows": 7173,
+            "joined_decisions": 7173,
+            "cancellation_targets": 5,
+            "jobs_cancelled_before_start": 5,
+            "live_intervals": 2964,
+            "live_pending_intervals": 0,
+            "resource_overlap_pairs": 0,
+            "room_overlap_pairs": 0,
+            "observed_equal_time_ties": 0,
+            "duplicate_exact_notifications": 0
+          }
+        }
+      },
+      "output_sha256": {
+        "baseline": {
+          "decisions.jsonl": "42969fece42daf954e040d02a12faeb2c0c81b4e5c554d47e67e3c7200f785e6",
+          "audit.jsonl": "1780f7d4bf561638a8246bd2fd81e99231de24e56af44f0f5222328047eae454"
+        },
+        "candidate": {
+          "decisions.jsonl": "42969fece42daf954e040d02a12faeb2c0c81b4e5c554d47e67e3c7200f785e6",
+          "audit.jsonl": "1780f7d4bf561638a8246bd2fd81e99231de24e56af44f0f5222328047eae454"
+        }
+      },
+      "decisions_and_audit_hashes_equal_baseline_candidate": {
+        "decisions.jsonl": true,
+        "audit.jsonl": true
+      },
+      "receipt_input_hashes_unchanged": {
+        "baseline": true,
+        "candidate": true
+      }
+    }
+  },
+  "full_tests": {
+    "baseline": {
+      "commit": "866a448455e5b6dce811302dc2901bb4c48f0136",
+      "head_unchanged": true,
+      "tracked_tree_clean_before_after": true,
+      "suites": [
+        {
+          "command": ".venv/bin/python -m pytest -q",
+          "exit_code": 0,
+          "runtime": "not captured in original metadata",
+          "elapsed_seconds": 69.24515509605408,
+          "summary_lines": [
+            "2362 passed in 69.06s (0:01:09)"
+          ],
+          "stdout_sha256": "2d83f0c0dee20e0f869a58e1a162cd69a20c0e197c6fc8ec9e4ac3be408b729c",
+          "stdout_hash_matches_receipt_and_metadata": true
+        },
+        {
+          "command": "node --test hotel_web/src/replay.test.js hotel_web/src/playback.test.js hotel_web/src/import.test.js",
+          "exit_code": 0,
+          "runtime": "not captured in original metadata",
+          "elapsed_seconds": 0.33209705352783203,
+          "summary_lines": [
+            "ℹ tests 60",
+            "ℹ suites 0",
+            "ℹ pass 60",
+            "ℹ fail 0",
+            "ℹ cancelled 0",
+            "ℹ skipped 0",
+            "ℹ todo 0",
+            "ℹ duration_ms 121.177291"
+          ],
+          "stdout_sha256": "8ef44df5c69ca5a8a8502bc4bad9fab5ce54e90339a5497b9bb23e3f86408627",
+          "stdout_hash_matches_receipt_and_metadata": true
+        }
+      ]
+    },
+    "candidate": {
+      "commit": "9d62448c2f51315f44e89604ffd48a97ecf83d6d",
+      "head_unchanged": true,
+      "tracked_tree_clean_before_after": true,
+      "suites": [
+        {
+          "command": ".venv/bin/python -m pytest -q",
+          "exit_code": 0,
+          "runtime": "Python 3.11.15",
+          "elapsed_seconds": 80.7341247919976,
+          "summary_lines": [
+            "2407 passed in 80.53s (0:01:20)"
+          ],
+          "stdout_sha256": "9dea3565042d0b16dde1afd93e3b51ec556820c3fe3c66714354a858bd39c0e3",
+          "stdout_hash_matches_receipt_and_metadata": true
+        },
+        {
+          "command": "node --test hotel_web/src/replay.test.js hotel_web/src/playback.test.js hotel_web/src/import.test.js",
+          "exit_code": 0,
+          "runtime": "v26.0.0",
+          "elapsed_seconds": 0.23540195800887886,
+          "summary_lines": [
+            "ℹ tests 60",
+            "ℹ suites 0",
+            "ℹ pass 60",
+            "ℹ fail 0",
+            "ℹ cancelled 0",
+            "ℹ skipped 0",
+            "ℹ todo 0",
+            "ℹ duration_ms 125.536292"
+          ],
+          "stdout_sha256": "6b069a583cd06b300f658fcd90d9bcfa68a25d011ea87b5fb0a62c2843ca8ed0",
+          "stdout_hash_matches_receipt_and_metadata": true
+        }
+      ]
+    }
+  },
+  "limitations": [
+    "All replays use synthetic Quickstart/Dev data; they establish causal offline replay and validator consistency, not ground-truth precision, recall, detection accuracy, savings, or real-world safety.",
+    "The validator is a file-level consistency and scheduling audit, not an end-to-end proof of correctness or operational effect.",
+    "No physical action, model call, API call, or network call is evidenced by these runs; browser/Cerebras archive evidence is omitted.",
+    "For the candidate Quickstart rerun, the saved stdout summary contains only its tail and omits the event count; 3939 is preserved in baseline stdout. The candidate decision/audit files and all 17 input hashes are byte-identical to baseline."
+  ],
+  "privacy_scope": "Aggregate counts and SHA-256 only. No guest names, guest requests, decisions, audit rows, raw records, credentials, or local configuration are included.",
+  "report_written_utc": "2026-11-14T11:16:43Z",
+  "evidence_audit_start_head": "9d62448c2f51315f44e89604ffd48a97ecf83d6d",
+  "candidate_ref_was_head_at_audit_start": true,
+  "audited_candidate_ref": {
+    "name": "HEAD",
+    "commit": "9d62448c2f51315f44e89604ffd48a97ecf83d6d",
+    "tree": "55e67abfd23da5c5f174b0620c14f0811853c6bb",
+    "tracked_tree_clean": true,
+    "source_commit_date": "2026-11-14T11:49:03+01:00"
+  },
+  "checkout_observed_after_audit": {
+    "head": "95145e7b2cc2fa82fe6691fab22d36157e3d35a2",
+    "tracked_tree_clean": true,
+    "observed_utc": "2026-11-14T11:16:43Z",
+    "note": "Shared checkout advanced after the 9d62448 candidate evidence was captured; all candidate run evidence remains pinned to 9d62448."
+  },
+  "release_code_gate": {
+    "expected_head": "95145e7b2cc2fa82fe6691fab22d36157e3d35a2",
+    "expected_tree": "c2c43183b7753e070bbd02c1220d8cfbb7f14e0f",
+    "head_before": "95145e7b2cc2fa82fe6691fab22d36157e3d35a2",
+    "tree_before": "c2c43183b7753e070bbd02c1220d8cfbb7f14e0f",
+    "head_after": "95145e7b2cc2fa82fe6691fab22d36157e3d35a2",
+    "tree_after": "c2c43183b7753e070bbd02c1220d8cfbb7f14e0f",
+    "head_unchanged": true,
+    "tree_unchanged": true,
+    "production_file_count_before": 178,
+    "production_file_count_after": 178,
+    "production_code_hash_manifest_sha256_before": "d384270e9183413b6e74ed1c5cd396aa4417e12a64322241880211e46b11ad73",
+    "production_code_hash_manifest_sha256_after": "d384270e9183413b6e74ed1c5cd396aa4417e12a64322241880211e46b11ad73",
+    "production_code_unchanged": true,
+    "production_files_changed": [],
+    "worktree_status_before": [],
+    "worktree_status_after": [],
+    "actual_document_only_changes": [],
+    "non_document_worktree_changes": [],
+    "python_suite": {
+      "command": ".venv/bin/python -m pytest -q",
+      "exit_code": 0,
+      "runtime": "Python 3.11.15",
+      "elapsed_seconds": 69.16928512499726,
+      "summary_lines": [
+        "2438 passed in 69.00s (0:01:08)"
+      ],
+      "stdout_file": "pytest.stdout.log",
+      "stdout_sha256": "e481988fc38ba3badeb0ca6e52439089f1d18b4572de942e14184cfb81600b79"
+    },
+    "node_suite": {
+      "command": "node --test hotel_web/src/replay.test.js hotel_web/src/playback.test.js hotel_web/src/import.test.js",
+      "exit_code": 0,
+      "runtime": "v26.0.0",
+      "elapsed_seconds": 0.21610300001339056,
+      "summary_lines": [
+        "ℹ tests 60",
+        "ℹ suites 0",
+        "ℹ pass 60",
+        "ℹ fail 0",
+        "ℹ cancelled 0",
+        "ℹ skipped 0",
+        "ℹ todo 0",
+        "ℹ duration_ms 117.119333"
+      ],
+      "stdout_file": "node.stdout.log",
+      "stdout_sha256": "7a4976432102cb144634bb7db15862e6c8771d7381ee0ddbff1a52cd9b48929a"
+    },
+    "captured_at": "2026-11-14T11:18:26.613107+00:00"
+  },
+  "release_code_sha256": {
+    "common/__init__.py": "2793037d4c39430d56a6185bde9b0df16fc728c848dc111e5be86f6cca2e5865",
+    "common/contracts/__init__.py": "c14895cbb77a657ac6fc8d5012f113f8c06c868d120ed9e0358b1eec712fdfd6",
+    "common/contracts/api.py": "e6ee47ad73903591e8e3f0ba4bdaf0c1b86e8476ce9778cc56c01a03020649f8",
+    "common/contracts/schemas.py": "9675220e64fd6b5f7ffd51f7a900f236460fdfb3d26e331f48da7dbabf3f0215",
+    "common/tests/test_contract.py": "f3b117caf1e165f9422f93e29f5d473e1e1b1907afd106a400f61d0e986dd93a",
+    "engine/__init__.py": "3ff5c7b5dedb0ba82254a7f88376e6241b79a854134fbe06a2656fb1945d9fdd",
+    "engine/annual.py": "e8ce34d2e7010cd980cec1fea190f33451560e51c8ab56f4428c90c145cadedb",
+    "engine/cli.py": "f0ebb00ed776cf077ab5336b7337597da2f562f36c700364207bd4666f216f7c",
+    "engine/core.py": "44164f9b9df3e326895a4769b14c2e0d6c0d9101c2485e508d2d7cdb7a7a3012",
+    "engine/decisions.py": "86c5ea785d1982861f624eff0af965a17cd42fe99fd7baf8a7d25b677a8b8b11",
+    "engine/detectors/__init__.py": "3ff5c7b5dedb0ba82254a7f88376e6241b79a854134fbe06a2656fb1945d9fdd",
+    "engine/detectors/energy.py": "6dd62d4c7250d9ef2aca08af585b9389977c176b3a5b5110364e7872f7c8c1b5",
+    "engine/detectors/guest_services.py": "653e57cceda15702fc67aca3243ae1d8e1d0ddff3e7c82e1b47f65500836d587",
+    "engine/detectors/logistics.py": "70ece6d0683a97ed33a72ff269772f9411056e9faaee3c3c689d24ddb7a09343",
+    "engine/detectors/maintenance.py": "4ea0940075cc2642d9774094bd0c86d5d09b4415b2d1c7b79f2b9b2f3af3b52b",
+    "engine/detectors/optimization.py": "4cb3d7d1abdac76d3a0c8fe0c2bcd3451f763baa4f37a98732de65a724b2466e",
+    "engine/detectors/surge.py": "1fa0f37d4aa5db2886060106c84163b35ec25a23d5ad6afc5ee0dbea795b0c2a",
+    "engine/detectors/turnaround.py": "d93e6a15b679faaa158e954a4bb384d9fc8ce339b60188cd4afc64dc3e7f3744",
+    "engine/detectors/water.py": "6b701c8dfd03cfece80afe173a2c644ce90b1d7d2d600f4c2041815e714b70aa",
+    "engine/detectors/weak_water.py": "8c0c527e1b8220a9b96938825d9857c4422ea8e6eb5c74f73f7921f72c648aa3",
+    "engine/executor.py": "b812287388981472b5959829cf87960e9963a871f047cc505dadc43401359abf",
+    "engine/insights.py": "a087b231ac0f90d787f0027f1770c43800f33a387e05d3e968dbc7e05c15c771",
+    "engine/notifications.py": "71fe6b131441bba88d39c31554205575a17403f366df7dd4001868b64086abc8",
+    "engine/output_artifacts.py": "1673c743caeab6c5053157a7463d6064d4891d5394c927fcca6d61c53924e8ca",
+    "engine/planner.py": "9719ce4474acd07f339679aa8b7911aa2ad86871d2d4bf2a5ed19ac49062352f",
+    "engine/resources.py": "2addbd7126afbb31c6ffbcd8f4533babf5aad52efabbc752656c1d4fddd650a0",
+    "engine/safety.py": "5ded9cce9e10e23e0284d83a925dc7b67948f1751d8add6bbed1215e9e1b5541",
+    "engine/validation.py": "ce34f4818f6b05897ab3d6d292a88d4001bd13a815f3ae4e61578933aac6aa96",
+    "hotel_bot/__init__.py": "7d4b0493bc969d98ab031c36a62881ed47b57a57274afffbdce4b4311427430a",
+    "hotel_bot/__main__.py": "fbfd63f935f0b9ce47204537532407fe9ddeed1b5d161b01bd40fdf10170c1b6",
+    "hotel_bot/config.py": "9663bfac0a4181320a7a0408ed6ec6e864b4fc5724b3be8b12bbd0a8a3ca764f",
+    "hotel_bot/datasets.py": "27fc5777db507400f1362778d00d7a32783af1194a9ebfda464a0bd04948450d",
+    "hotel_bot/demo.py": "682e646c6ba62754667d0b1ffce5f7f936d3af096346be2c77e8a75ac9a1aaa4",
+    "hotel_bot/gateway.py": "91e2e9bc65c446898bcc1b7f59c0df5a6bb4663bc74f6dbab81090855ea1fd67",
+    "hotel_bot/journal.py": "808d98c2c0099db25eadef8b91ae3f30994be17925b9794004e04a82f28c281d",
+    "hotel_bot/playback.py": "7eacabc472a4414a011b8a60d0b159e183ea46e254482c65ac50ad0c53721081",
+    "hotel_bot/replay.py": "b8e3d4e4f44accfb4b4f550dd5bbb4b3b687bf6a5a98ca4827d34c4d3535c80b",
+    "hotel_bot/server.py": "259d1bd2d16f663b4ea1aff92a68c118c5036df5b341902e9444069817380266",
+    "hotel_bot/service.py": "f3826d6fc0f286d00460de6cda7aa04a2db029eec1ada01104a7e71c31e31cf3",
+    "hotel_web/index.html": "a8fd35acbd8e43ba83f4f11642107b7955ead4362b99cad7a2117bca995871d1",
+    "hotel_web/package-lock.json": "7bf75fb480d94aff1bd2077c3f50846b5d5c1d7675dc9d3ceb29e8fe111dbc37",
+    "hotel_web/package.json": "91cfa5f839b065732de351fba00d69f5e65e85f10d241f08a34e5c6e4543e7d3",
+    "hotel_web/src/import.js": "8322c874dbb2895b8dad416b9f32ade263457155a0d5871717478fa2c2ca84dd",
+    "hotel_web/src/import.test.js": "41a2012bd01c9717a2d016b79e7bf8bb5dcb98feebe437d9fc4d70e842ef45c2",
+    "hotel_web/src/journal.js": "f22ca217d70453bed0b94f9a8609d610ae066bbc1529a78610137fc22d2d60f2",
+    "hotel_web/src/main.js": "a226a23da0e30819f6ac26b51941cb9826de93becdb694f9382d94e241367f68",
+    "hotel_web/src/playback.js": "c2014aaf80380a4c3eda94b79c9f1c8a0aae6a99df3fef02d1946952f5bce9fd",
+    "hotel_web/src/playback.test.js": "80113531f05e0ba94ce15f0a1f43f1f1956537edd74108ae78fc80fe6aaf353f",
+    "hotel_web/src/replay.js": "a3537227a7ba769702996a02b1eaceab7dacec5037f601227fe7e55e76a5c4b4",
+    "hotel_web/src/replay.test.js": "6df1bdac7276b0edd48e98d4c1904d875e654578d951bdb74c3d2ce3074f3e72",
+    "hotel_web/src/scene.js": "a23e0eb3fa0390baff112fe09431bca9613af2504277df0879cc971c98c47bb2",
+    "hotel_web/src/style.css": "ff75be6f88f830d0af38e8e141937c6f700b180c3b77a8fff764b3d3369714e3",
+    "ingestion/__init__.py": "1375e574fd621e47c7940bcdc6db877d5fef208eb9a4e24076b5afd43b197cf6",
+    "ingestion/cli.py": "dcee4e4e4c82131d0379e442482d0b3cdccfd887d411c4dd853f068d7dc70f13",
+    "ingestion/events.py": "f5e7c100f906ce86f433861a49b3bdd23c82c8279b64c3c5c4024d38424e617c",
+    "ingestion/guest_generation.py": "01bd24f250711256f7e8bf348bd6c9bd380c8e0072fee52e72728f8775a758bf",
+    "ingestion/guest_parser.py": "53bfb8694ee750084b32947b14a1d27b30bf1fc65e09207a1a51a1aab335df19",
+    "ingestion/llm_transport.py": "4ee125155b5d7c8e79735c94b02f781508d8ed9b5690c9bd022d237ac519b177",
+    "ingestion/loader.py": "fbe860ff1f27e8d63f2b277972e8960bd9f72ca92a578a3d09727d4e8157b6be",
+    "ingestion/quality.py": "09e8f5053bc92d1c522ae9d75b08de27b00e0473b88b1283c3a8613e01377f60",
+    "ingestion/replay.py": "91131e65c4970595f4e920acd09ef09b6fdf25b8660c3030364770c077285a9f",
+    "ingestion/request_polarity.py": "47712855601a19f99b9165300545c173a130f534c65920810888f897c0e89ab4",
+    "pyproject.toml": "476784e16b540b45b37028a5724bfc25283cea42ff1fa2ca5f4a25cd09c1263e",
+    "run.py": "d59c317947cc62e58ed9f9fb0c286930d619e4898ad5dc124e64e7c2b64e9a2d",
+    "scripts/__init__.py": "3ff5c7b5dedb0ba82254a7f88376e6241b79a854134fbe06a2656fb1945d9fdd",
+    "scripts/audit_data.py": "daf0526866470e3df1482d6efafef10ccbc85f88ae634e3ee6173c6735077802",
+    "scripts/benchmark_guest_parser.py": "2e617777e8d00c86d708ecd91961189c89a66c2aecaaadd7d6d8115f76f994ce",
+    "scripts/benchmark_multi_intent.py": "0a975808971cf50c06558d69cba0c9b50b71c2820fbde1b5a3844b320af98f9b",
+    "scripts/compose_guest_sft.py": "38bfacd78a6a3ed6a900c2fddf35e310c316639225a293c02e1ff9dd27c4a5be",
+    "scripts/evaluate_water.py": "af996f7040cd7945c94175d72e5c099ef98b735a0bbe884cb1b96472d1660d10",
+    "scripts/prepare_data.py": "f258e9739c6e1b2369743d5115527b99e7039ac419707c16e1e7729f8cba559e",
+    "scripts/prepare_guest_sft.py": "74cdafe056947a7ad98db243eeed4a1a2a53d9b114017099aedf4eade913817a",
+    "scripts/refresh_f5_artifacts.py": "f4feb2d4c0ed62390ca2556dadc7c653f242cfe05220872f690526b2d402f72a",
+    "scripts/train_guest_lora.py": "8183a1b474d3a720d691b4477acc159c1e40bf56fd7db6594ca2a570d5e0f05e",
+    "scripts/verify_local_release.py": "007d0c24f4a62420e47981ee46168a359f3310b83e9f4eb009a4cd83b7dd4d64",
+    "tests/__init__.py": "3ff5c7b5dedb0ba82254a7f88376e6241b79a854134fbe06a2656fb1945d9fdd",
+    "tests/bot/test_config.py": "d06121d3efc605bf4398db2212f69e91bb65295376ea3c005366d3306854395d",
+    "tests/bot/test_dataset_jsonl_bom.py": "a0c439a970c87619ecb9607452f7240d8c03f479d9dfa7cbb2da230adfb0a476",
+    "tests/bot/test_datasets.py": "ea22668831ea05c415182f4adeec712be33573dd2affa2e4dd95a182ff2980ff",
+    "tests/bot/test_gateway.py": "0f4a8f10a7c237fd908aa65f523736eab2f95a1a28fe3b06bbe2045e25a1f2e9",
+    "tests/bot/test_journal.py": "3a2060cbe398bb6181a73234514d535d8cb2e0c6a9f5548b53a1e28af43a7d67",
+    "tests/bot/test_playback.py": "99bde94ecec171adce4232679a0d23dc326b63930a40717ae8f05d773deef0d8",
+    "tests/bot/test_replay.py": "e33c367d5f87744ff9c92ccad256d735074c992f16eb1441bcce44827a574fd9",
+    "tests/bot/test_server.py": "ce75ec0747e5798f59e18957f3a7fb36557accd98feca5bc6b77d3c4b653a316",
+    "tests/bot/test_service.py": "8847141f85d9d5805100f5d20f1c1bd5e77bcad406fcfb89d27dc7da15016c53",
+    "tests/engine/__init__.py": "c795d23cf95b68245893df6b3d2f8b7d147d17e6b46abbc5daf67f982f32b1f9",
+    "tests/engine/fixtures.py": "4e0044926c0f08f12a9c5334c061242e7539e8ac7ab0d9853380a83383ce956e",
+    "tests/engine/test_activity_hydration_adversarial.py": "bf112df9b7507d191728e308a838c2e3bbf28028358ad8e05e7da043f2d63d0a",
+    "tests/engine/test_annual.py": "f4d1c23ccbf4dd4f1eb4c4640b2547b4275200015628fe30dc77a6b5aa2a28b1",
+    "tests/engine/test_annual_bom_inputs.py": "f40d71118c5cdc5729755b891d92125bf03eb1d051fa0611f611a5a2f419f8e7",
+    "tests/engine/test_annual_report_coverage.py": "84b7dbcb564875c18c9269bf43bea0cb9658e309608a9cd68458e3bd80d990f9",
+    "tests/engine/test_annual_timestamp_instants.py": "8b5eeeb95bf02ee86984fa9368a79ba5b351197cf193c933250db0a2d82c6d2d",
+    "tests/engine/test_cancelled_calendar_identity.py": "4c1a7765591ceac1509b09d2a617cca63bf4039e3e958f83a721938c4d9608f0",
+    "tests/engine/test_cli.py": "19cade27ac8937142fe329153355adf960791265486b26abeef852f46605d9b8",
+    "tests/engine/test_cli_bom_metadata.py": "82079fc565c5c7d536c1958ca29fa36f2f8257945c05273c55e39ebbf7b4f0a3",
+    "tests/engine/test_cli_output_preflight.py": "81a78d9c932bb7eeb010d932b0c30a1fc3447b120f08f788610dd1a8489bd53f",
+    "tests/engine/test_comfort_notification_scope.py": "ab067e9108747bb2e9af29c18c2a98c2b844c38c3cf64c26f4ac6b38cec5add0",
+    "tests/engine/test_coordination.py": "d331dbe38d298989faefc9b4f7495d74dd0f4396e4dc57e8cf53065845c572e4",
+    "tests/engine/test_executor_atomic_boundaries.py": "c450e9ff891da937647891b107cbcd73f1e90ceb1a5248d7e35c0a022ca94f90",
+    "tests/engine/test_executor_atomic_reservations.py": "6623a3ecb7039d1dbcd1e520f9c344eacba187cb13b863594be18cdd3a79cbde",
+    "tests/engine/test_executor_clock_boundaries.py": "692a8bbfc1e58b8bd4693b0b98ffd362e218259ef2e8554531bdbf24a3a7e68d",
+    "tests/engine/test_extended.py": "1fedf1d1092ff7f24a1315d71c89e0460da479c6484a6c6cfd6c9f22dd12e4b1",
+    "tests/engine/test_external_review.py": "21db0244c0fb650fd1296601304090a96e34eaa16881a97b60e5728d644a7851",
+    "tests/engine/test_f5_artifact_audit.py": "b4866672f4202b4aaec5ff5d10171a99c38ecb0cf67e287456b1953fb24c97f7",
+    "tests/engine/test_f5_artifact_refresh.py": "211b22ac97f7dc0987176704f285f5cbc9d8d8edabc6a9d3cc0125c8b172af95",
+    "tests/engine/test_f5_integration_audit.py": "d1073673a5cd22c5798622e2a2e64e8c6f9f5434e4e2af1916db48a47fb09ccb",
+    "tests/engine/test_guest_services.py": "7d910978c4d4e165cb7245e78c63d19904fd801af16034d632543b6fa0635450",
+    "tests/engine/test_local_release_verification.py": "fa35e21228852bad1af782bd8298e64fac4e1b81d79fa53dd931e64bba28e0ed",
+    "tests/engine/test_logistics_capacity_boundaries.py": "3b65733ba485d4fd758f4661b82c6aa46af5a3de729dab6bb359d7ac9d318aa9",
+    "tests/engine/test_maintenance_pending_lifecycle.py": "e5e9cc5c38bc6899746089eb92e9bd1c961fe5bc0e7195f185f13a8bf2730d59",
+    "tests/engine/test_notification_correction_dedup.py": "33f23693227db85d56cc925af63c8f141cfdf346cb88ad2a14111542518eb1a7",
+    "tests/engine/test_oncall_capability_boundaries.py": "bcc41b41960a2ab8e98a945939371f5824f67f349b31b6e6fa74924711cebc9c",
+    "tests/engine/test_oncall_observation_roles.py": "5ee449b33902ef06cbb0e9270725b55198d10cdfce29913c6c3c70a6b5a7d3bb",
+    "tests/engine/test_operational_type_boundary.py": "37e19e2818a484cfb4e9b9769637fca37a2d81162a2f227963dd5328b70cdb13",
+    "tests/engine/test_operations_audit.py": "40f2ce02e821186ae4703b5868782f0073be5a67b1a222837db0da0f477643e0",
+    "tests/engine/test_output_validation.py": "39dbb836f406b921c75c1a97c74a5eaf35b77517228b5fa052504553cd293bf7",
+    "tests/engine/test_parser_review_boundary.py": "62f4cfcb1efcce6fb0d8f605acd55a27d9345761ead8897038ae53548d02b324",
+    "tests/engine/test_planner_audit.py": "e09e170d8528a35355c82b5776a79339af6edcfb68261524e0e82d9e0f41661b",
+    "tests/engine/test_planner_delayed_state.py": "2ea961e99dc5bb43d03154858ee7f2596020bc3a4389e41a47619ebdcda4696a",
+    "tests/engine/test_planner_transactions.py": "98bd361f93512928951ae705749ef501cb8721fb1b9e0f4657cad1e80ca72b3b",
+    "tests/engine/test_planner_unknown_room.py": "60526eee598269ca7c9dbc95395120400ac3aac251656bc488fe4909a0421637",
+    "tests/engine/test_preheat_reassignment.py": "d8f2e181aa42e31016a81e6a83545f0c80b6ca0f141ac47ac8edbcd92c8617f6",
+    "tests/engine/test_safety.py": "e099eeeee712b0dcac6f5783cbda0824a7d3f8e7b12b349fc580b536a04ca4cd",
+    "tests/engine/test_safety_audit.py": "00b2624778c495b8d5d19269b7cd1d614a64235f4b72f93dbffb935879e9e9c6",
+    "tests/engine/test_same_time_activity_hydration.py": "a78e2b056d59f6d90ab40ed7c2a27d09d22a840f70606ca34ff6428dedba836a",
+    "tests/engine/test_scenarios.py": "083f5811a6c4905317a47f3a411a2a258d8c65a2556d70ba22cf40f9fc351c65",
+    "tests/engine/test_surge_recovery.py": "cb71bd2c4e7bfb547b482ab6e80f32268d5bfb6f0d59e2a3f26377536b9ea894",
+    "tests/engine/test_terminal_cancellation.py": "bbf6020f645052d98a2e174316de6b778aea0c8db30c44212223d49ce1169813",
+    "tests/engine/test_turnaround_audit.py": "a82699bbbe03a00ca7aae29b539d536be2e23c920ea9e78b006b13f201ee8bd7",
+    "tests/engine/test_turnaround_boundary_regressions.py": "7e2d66f87719f54a5b050158115aed310b548c9fc308af6c680c3f15b3ad8fd4",
+    "tests/engine/test_validation_approval_boundaries.py": "b68c33da92f2ab3631a2f5c8841dbe03c6d4e245eb1fc5115d0d47f6e5256280",
+    "tests/engine/test_validation_bom_inputs.py": "fe7e11d93c5484d033bb2479f16a7de603bf4b6be7242740666945ebd0335b51",
+    "tests/engine/test_validator_output_aliases.py": "4fd4e62a11eb65c78c68dd0d204b5666cc8ebd3a2bce13325dd402121bdd7abc",
+    "tests/engine/test_water_energy_audit.py": "8ada53830701c56e8dbe4c802d556f525beff96c6248faac9f93ef6399386023",
+    "tests/engine/test_water_episode_boundaries.py": "4540ce11c6a9e40f5e0ce6a9fa67f8ececa2aff8e5b623e5a2a680fa4ef8e1d8",
+    "tests/engine/test_water_evaluation.py": "6f3b1b67594ef1fdb0e0d3b5550d11d66892a71e3361100aacfaf1386d98f03c",
+    "tests/engine/test_water_interval_coverage.py": "f4c3c29849dc756814d2ecab83224edfc8f52643a6251ff6cb970085642f1862",
+    "tests/engine/test_water_operation_boundaries.py": "d001d54ce558b6debbd581bb119059c5efb33e8f68549ac060a9e2606cf06d80",
+    "tests/engine/test_weak_water.py": "700428c8d297851d678edd0472ac8936c5b5d2ba11085de91e5fc6640f33f846",
+    "tests/engine/test_weak_water_adversarial.py": "d036f943688da08fa4092c38dddeb8792c7ab42e40c2937d56aca8380badb033",
+    "tests/ingestion/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "tests/ingestion/test_available_event_window.py": "1c5f1925c191f8b1809c23d94d72c6e1b464b24762c9565d11c997e9af6f92f8",
+    "tests/ingestion/test_causality_astra.py": "267ba4bcc69cae5580062e36c8d4a95a4c0882f6e52c33f4a38d3e16e74f58f6",
+    "tests/ingestion/test_guest_fallback_polarity.py": "bc63abaa675234524372e05ffd58fb3df284171a379955d75566076e9c6578ca",
+    "tests/ingestion/test_guest_generation.py": "4bb3983572a823b5fdf2e5d1551c4a6ef0ea88c61393a4da0b1a7a4276156f7a",
+    "tests/ingestion/test_guest_parser.py": "b3ff569e8eb63e16b4baec18a414ef92a33b2a380ce5611b7c27277e6af96ef5",
+    "tests/ingestion/test_holdout_robustness.py": "f8ffb65d3cf3d6f7aa0a1a34d4939479e536f7fba9c6925c1de6ba338f0fa922",
+    "tests/ingestion/test_index_equivalence.py": "ac60bfb6f67267625a27234aea864a5cc99ef3c20ac8cb2b01c3cb65fd40f1ca",
+    "tests/ingestion/test_llm_transport.py": "f33a1729b889138c4f4ac64b08d901cecb09769386a2c8db53fb3fb80425864c",
+    "tests/ingestion/test_local_parser_end_to_end.py": "4432dcf7a81e94c2ac952550868b200157f4209a8a808bfbe609488011a45604",
+    "tests/ingestion/test_local_parser_transport.py": "5d49c343ef51893cee917a0fd1435a1f405733470735ee0c4e8e0ba515fa8dcf",
+    "tests/ingestion/test_multi_intent_benchmark.py": "b00bcadf6c4de1184e6f498d6de203da181d1db0580d107ceb3198880ac3a63c",
+    "tests/ingestion/test_parser_benchmark.py": "491f7b5d146be0819c6ec5783f75c50f8905c5d5053aa2cdb5c4210733fd95fc",
+    "tests/ingestion/test_parser_benchmark_raw_diagnostics.py": "66a30912a0546f87e50109336e471b8ec26784fe9a1b7b7df8090d3dfe7ab03b",
+    "tests/ingestion/test_parser_cache_recovery.py": "12d6d1db99e427cb1381f690daa7581fa6de2edf98dcfaad1133a0e005475bdd",
+    "tests/ingestion/test_parser_clock_review.py": "d3ac6393443c19c81f91f8de9b3215c8219b4ef92a76eea0d43d2dac9af84d51",
+    "tests/ingestion/test_parser_declined_requests.py": "110e80b21fbefe95a645de73f149749ba2965fcd3d184617cd5e25982ee507fe",
+    "tests/ingestion/test_parser_import_failure_boundary.py": "de33798b18da7cbb4814c920e3a52e79c36ed94b4b2d890343363ecddd30f8e1",
+    "tests/ingestion/test_parser_local_acceptance.py": "e4c7337132c0734622bb4e87dabbf5f2a379446e903ffad17afc1574bd38a030",
+    "tests/ingestion/test_parser_origin_credentials.py": "213619b4eb00461bf408c23e1d99262bc0b964262ceb98070ae1d5a2b3e87c20",
+    "tests/ingestion/test_parser_relative_compounds.py": "36869ecd03bef5924371b67d480cb7604ca9e50a9631d03254a23d9373034c3a",
+    "tests/ingestion/test_parser_source_clock_integrity.py": "25e88a22f0cac0e5b77fc7daf118dc7cbee5954b9fe0997c5b732350a9a3939a",
+    "tests/ingestion/test_parser_source_clock_qualifiers.py": "a0bfeceeadbc80f88ac97dad6bbf8cf8f428531ea2e10259161a8f6e36cda159",
+    "tests/ingestion/test_parser_time_ambiguity.py": "fb57a7711e69746fc85ed48dc2868736333cc05f7823630cf68736c75bc5ecf0",
+    "tests/ingestion/test_parser_time_independent_audit.py": "bfc9a9f3000d5ef8527e1b902b3bbe2bb828f2b2c3442070cce52e5736bacb23",
+    "tests/ingestion/test_quality.py": "c3344350abb3c5fd2262fec1bd08a8fd2d15a47bb6cac0941a63504b2ea00eb6",
+    "tests/ingestion/test_raw_publication_availability.py": "a5508aea5e2853770c30a60720d5c81d38158ceec0bcb3ef921380513605f90e",
+    "tests/ingestion/test_raw_publication_engine.py": "45ca360a07d6acdfabf010e8e4f47b6c2c5f54be3fc74ee99d24a5d21bc3956e",
+    "tests/ingestion/test_replay.py": "27d170d50dac07ca7b3c0e3338ff5c9c747fb0cf2ca1dbbec3396921653e5f6d",
+    "tests/ingestion/test_request_polarity.py": "c7db8167a9d84aa043aa58e3bb2172fbc2face77cdea41bb7a35d69fa3405c08",
+    "tests/ingestion/test_request_polarity_scope.py": "ff6c110035db0edaeee8628af1b5f1ea448e3fb429d7d7bd891096212cb080ca",
+    "tests/ingestion/test_snapshot_and_roster_bounds.py": "dc81ffab4a0b502397515982eb07a7e78edf669f7b5ba6c328bcf95acea3c343",
+    "tests/test_scaffold.py": "750f336afc4ec511f720c93bcdec99585dab6bb64946f68573561bed1aa4f4b4",
+    "tests/training/conftest.py": "f150449787f57c80ee37f8c677ef052343600548e41a1f476f010e7095e8c036",
+    "tests/training/test_compose_guest_sft.py": "53478cf28f4b0da02606763dbf6a34b3afe197c1be798970f1a0f690f66f93f9",
+    "tests/training/test_prepare_guest_sft.py": "b80feb09fdd72a4a608c155b2c08407dfa2cabfc0bb5ad600bd794b9cbe3457f",
+    "tests/training/test_train_guest_lora.py": "072cbb1f7203adc6379399e3b3527bff54c1fa0098aaf324b9cd3f36e7b95331",
+    "tests/training/test_training_validation_cadence.py": "7fc12db1e9ea95fe37a1cb3852034cbd0f549a6b1baa7db6f8dd951c046d26ca"
+  },
+  "annual_dev_check": {
+    "aggregate_metrics": {
+      "checkout_cleaning_pairs": 3714,
+      "energy": {
+        "balance_deviation_samples": 0,
+        "battery_charge_kwh": 18784.404500000124,
+        "battery_discharge_kwh": 16941.959500000055,
+        "building_load_kwh": 171394.56324999934,
+        "cost_covered_samples": 35040,
+        "grid_export_kwh": 6822.995249999983,
+        "grid_import_cost_eur_observed": 27639.319013450116,
+        "grid_import_kwh": 124790.86874999978,
+        "hvac_electric_kwh": 58159.89424999998,
+        "pv_kwh": 55269.149250000024,
+        "samples": 35040,
+        "valid_samples": 35040
+      },
+      "event_counts": {
+        "arrival_waiting_room": 24,
+        "bms_alarm": 926,
+        "checkin": 3255,
+        "checkin_after_wait": 24,
+        "checkin_early": 425,
+        "checkout": 3616,
+        "checkout_early": 98,
+        "cleaning_completed": 3714,
+        "cleaning_started": 3714,
+        "floor_bin_emptied": 402,
+        "no_show": 71,
+        "robot_floor_cleaning_completed": 3103,
+        "robot_floor_cleaning_started": 3103,
+        "room_reassigned": 1,
+        "stay_in_progress": 36,
+        "vending_out_of_stock": 20,
+        "vending_restocked": 105,
+        "waste_bin_full": 3,
+        "waste_pickup": 104
+      },
+      "observed_checkout_to_cleaning_minutes_median": 75.0,
+      "staffing": {
+        "cleaner:scheduled:shifts": 745,
+        "cleaner:sick:shifts": 24,
+        "robot:out_of_service:shifts": 13,
+        "robot:scheduled:shifts": 717,
+        "technician:scheduled:shifts": 241,
+        "technician:sick:shifts": 3,
+        "technician:vacation:shifts": 17
+      },
+      "temperature": {
+        "cold_closed_window_samples": 59163,
+        "cold_samples": 63266,
+        "hot_samples": 209068,
+        "implausible_temperature": 8,
+        "missing_temperature": 7240,
+        "occupied_samples": 837046,
+        "samples": 1401600,
+        "unknown_samples": 2262,
+        "vacant_samples": 555044
+      },
+      "water": {
+        "complete_interval_residual_liters": 86434.89999998744,
+        "complete_main_room_intervals": 22969,
+        "median_complete_interval_residual_liters": 3.599999999803913,
+        "missing_or_invalid_room_samples": 5267,
+        "room_counter_drops_ge100l": 2,
+        "room_negative_deltas": 8103,
+        "room_samples": 1401600,
+        "vacant_night_flow_intervals_ge_3l": 49,
+        "vacant_night_flow_liters_ge_3l": 1126.3999999999978,
+        "valid_main_interval_liters": 1666624.6,
+        "valid_main_intervals": 35039,
+        "valid_room_interval_liters": 1526331.000000038,
+        "valid_room_intervals": 1385259
+      }
+    },
+    "annual_source": "engine/annual.py",
+    "annual_source_sha256_before_and_after": {
+      "after": "e8ce34d2e7010cd980cec1fea190f33451560e51c8ab56f4428c90c145cadedb",
+      "before": "e8ce34d2e7010cd980cec1fea190f33451560e51c8ab56f4428c90c145cadedb"
+    },
+    "api_or_model_calls": false,
+    "command": ".venv/bin/python -m engine.annual --data-dir data/PLATO40_v2_dev --out outputs/release-main-95145/annual-dev/insights.md --json outputs/release-main-95145/annual-dev/analysis.json",
+    "comparison_result": {
+      "changed_aggregate_metrics": {},
+      "semantic_json_equal": true
+    },
+    "comparison_with": "docs/analysis_dev.json",
+    "exit_code": 0,
+    "finished_utc": "2026-11-14T11:16:56Z",
+    "head": "95145e7b2cc2fa82fe6691fab22d36157e3d35a2",
+    "outputs_sha256": {
+      "analysis.json": "de56a5273fc507fc93e5c270f9fc03ed4950328312ad26a7684e181b3fd8923b",
+      "insights.md": "7358fbabbc068b2f23ce0125a2ff62163a9ba4772cab7160a9e5f87a3d6e8763"
+    },
+    "production_code_frozen": true,
+    "replay_run": false,
+    "required_input_count": 17,
+    "required_input_hashes_unchanged": true,
+    "required_input_sha256_after": {
+      "access_log.csv": "b1ed2219f1093c2ff22d2a13ec9c9f6b345a00cbff2b30505ab43b7f8a1f53f5",
+      "bookings.csv": "9738181653c6808875f9796f2cc3a1b2bd2b3f38be56b7b5e1dba8c05d3c9a6f",
+      "building.json": "671785fcc397b9f61811c4ae04cffdd49a5468621bf310f9424238512be397d3",
+      "energy.csv": "31dd0c2c7b351d1bea16fef68b72301212ee9820d1493f146f5d48e689cca6c3",
+      "equipment.csv": "a8406da126a33e03d5b29fb8faf78b92a18f6713163659ab597615d674dcb879",
+      "events.jsonl": "217d6211d872a450c884a9e421f5a84d50539049fe3807921d7addb5eaf1fc9b",
+      "guest_requests.csv": "85b16e40b7a28812f7a1fc50b7bf92a0693677ac0d42d46aaad8a6e112b500f7",
+      "logistics.csv": "720157ac43503d57b5e8a81e3c7cf47f89ff6ba80d2e627f717aaeafc74b0892",
+      "manifest.json": "73fb3c10d9531c3a11d12e13116122a6b598ab05fc3b07cb438ef718ecebfde2",
+      "room_telemetry.csv": "71278be6b629344f65e9bb469e39e7a061dd09d4028af524256f167ed7251ca8",
+      "room_water.csv": "009d42067301a01ca073228ceb307aa20eef58ab01861cd3ccf6e8fd2b41126b",
+      "staff_roster.csv": "436af432d59db36d8ae59d99e765feb61bc08d7d5622158e73e6982bd671d6ec",
+      "tariff.csv": "dcb6201d8de5e2725fbd37f29380d715157259ab2ec832eb268cbc8e18c12ca6",
+      "water_main.csv": "0d34e062b480c7da26ce660a7dd95720a70a897534350902d3927dfb56c45835",
+      "weather.csv": "a00d723c0ce66d5c1692df57dcbe8ecca6374b91defa8d042e8277eceb37cb6f",
+      "weather_forecast.csv": "d8804bb66476a3032dbb62ab76b552a442545948236cc7598bcd968174544279",
+      "work_orders.csv": "adb38bc9202606d1cd690a2da86c3c4ae8da031118134f6222b90ffc51a6fd8a"
+    },
+    "required_input_sha256_before": {
+      "access_log.csv": "b1ed2219f1093c2ff22d2a13ec9c9f6b345a00cbff2b30505ab43b7f8a1f53f5",
+      "bookings.csv": "9738181653c6808875f9796f2cc3a1b2bd2b3f38be56b7b5e1dba8c05d3c9a6f",
+      "building.json": "671785fcc397b9f61811c4ae04cffdd49a5468621bf310f9424238512be397d3",
+      "energy.csv": "31dd0c2c7b351d1bea16fef68b72301212ee9820d1493f146f5d48e689cca6c3",
+      "equipment.csv": "a8406da126a33e03d5b29fb8faf78b92a18f6713163659ab597615d674dcb879",
+      "events.jsonl": "217d6211d872a450c884a9e421f5a84d50539049fe3807921d7addb5eaf1fc9b",
+      "guest_requests.csv": "85b16e40b7a28812f7a1fc50b7bf92a0693677ac0d42d46aaad8a6e112b500f7",
+      "logistics.csv": "720157ac43503d57b5e8a81e3c7cf47f89ff6ba80d2e627f717aaeafc74b0892",
+      "manifest.json": "73fb3c10d9531c3a11d12e13116122a6b598ab05fc3b07cb438ef718ecebfde2",
+      "room_telemetry.csv": "71278be6b629344f65e9bb469e39e7a061dd09d4028af524256f167ed7251ca8",
+      "room_water.csv": "009d42067301a01ca073228ceb307aa20eef58ab01861cd3ccf6e8fd2b41126b",
+      "staff_roster.csv": "436af432d59db36d8ae59d99e765feb61bc08d7d5622158e73e6982bd671d6ec",
+      "tariff.csv": "dcb6201d8de5e2725fbd37f29380d715157259ab2ec832eb268cbc8e18c12ca6",
+      "water_main.csv": "0d34e062b480c7da26ce660a7dd95720a70a897534350902d3927dfb56c45835",
+      "weather.csv": "a00d723c0ce66d5c1692df57dcbe8ecca6374b91defa8d042e8277eceb37cb6f",
+      "weather_forecast.csv": "d8804bb66476a3032dbb62ab76b552a442545948236cc7598bcd968174544279",
+      "work_orders.csv": "adb38bc9202606d1cd690a2da86c3c4ae8da031118134f6222b90ffc51a6fd8a"
+    },
+    "scope": "Retrospective synthetic Dev dataset analysis only. These are observed aggregate sample counts, not detection accuracy, precision/recall, savings or real-world performance claims. No guest-level records included.",
+    "started_utc": "2026-11-14T11:16:43Z",
+    "stdout_summary": {
+      "coverage": {
+        "days": 365,
+        "end_utc": "2027-01-01T00:00:00Z",
+        "model_id": "PLATO-40",
+        "profile": "dev",
+        "start_utc": "2026-01-01T00:00:00Z"
+      },
+      "status": "retrospective_analysis_complete"
+    },
+    "tracked_status_after": "",
+    "tracked_status_before": "",
+    "tracked_tree_clean_before_after": true
+  },
+  "original_tag_archive": {
+    "ref": "refs/tags/pre-holdout-original-2026-11-13",
+    "tag_object": "9a2c3288c47e5f5a826f86f59e0c3b6d4131b067",
+    "commit": "4987c7fb4e05b94e89ef6cfa894e0588b895774d",
+    "tagger_date": "2026-11-13T22:48:46+01:00",
+    "note": "Original annotated object preserved; archive ref created later. Current pre-holdout retarget is disclosed in README and uses actual new tagger time."
+  },
+  "release_documentation_scope": "README and this metadata-only receipt are added after tested code commit95145e7; production source hashes above must still match. The documentation commit cannot contain its own hash."
+}
