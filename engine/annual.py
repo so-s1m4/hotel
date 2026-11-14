@@ -19,6 +19,11 @@ def rows(root, name):
 
 
 def analyze_dataset(data_dir: str | Path) -> dict:
+    """Use strict UTC instants for ordering and joins, preserving source bytes.
+
+    The existing instant helper accepts equivalent zero-offset spellings and
+    rejects invalid, naive or non-UTC timestamps when used in these calculations.
+    """
     root = Path(data_dir)
     manifest = json.loads((root/"manifest.json").read_text(encoding="utf-8"))
     building = json.loads((root/"building.json").read_text(encoding="utf-8"))
@@ -30,10 +35,10 @@ def analyze_dataset(data_dir: str | Path) -> dict:
     active_bookings = {}
     turnaround = []
     with (root/"events.jsonl").open(encoding="utf-8") as stream:
-        events = sorted((json.loads(line) for line in stream if line.strip()), key=lambda e: (e["timestamp_utc"], e["event_id"]))
+        events = sorted((json.loads(line) for line in stream if line.strip()), key=lambda e: (instant(e["timestamp_utc"]), e["event_id"]))
     for e in events:
         event_counts[e["type"]] += 1
-        t, room = e["timestamp_utc"], e.get("room_id")
+        t, room = instant(e["timestamp_utc"]), e.get("room_id")
         if e["type"] in {"checkin", "checkin_early", "checkin_after_wait", "stay_in_progress"} and room in rooms:
             timelines[room].append((t, "occupied"))
             active_bookings[room] = e.get("booking_id")
@@ -51,7 +56,7 @@ def analyze_dataset(data_dir: str | Path) -> dict:
                 active_bookings.pop(origin)
                 active_bookings[destination] = e.get("booking_id")
         elif e["type"] == "cleaning_completed" and room in checkout:
-            minutes = (instant(t)-instant(checkout.pop(room))).total_seconds()/60
+            minutes = (t-checkout.pop(room)).total_seconds()/60
             if 0 <= minutes <= 1440:
                 turnaround.append(minutes)
     times = {room: [t for t, _ in entries] for room, entries in timelines.items()}
@@ -68,6 +73,7 @@ def analyze_dataset(data_dir: str | Path) -> dict:
         room, t = row["room_id"], row["timestamp_utc"]
         if room not in temperature:
             continue
+        t = instant(t)
         if room in last and t <= last[room]:
             duplicate_rows += t == last[room]
             out_of_order += t < last[room]
@@ -108,6 +114,7 @@ def analyze_dataset(data_dir: str | Path) -> dict:
             water["missing_or_invalid_room_samples"] += 1
             previous.pop(room, None)
             continue
+        t = instant(t)
         if room in previous:
             old_t, old = previous[room]
             if t <= old_t:
@@ -117,7 +124,7 @@ def analyze_dataset(data_dir: str | Path) -> dict:
             if delta < 0:
                 water["room_negative_deltas"] += 1
                 water["room_counter_drops_ge100l"] += abs(delta) >= 100
-            elif (instant(t)-instant(old_t)).total_seconds() != 900:
+            elif (t-old_t).total_seconds() != 900:
                 water["noncontiguous_room_intervals"] += 1
             elif delta <= 2000:
                 water["valid_room_intervals"] += 1
@@ -125,7 +132,7 @@ def analyze_dataset(data_dir: str | Path) -> dict:
                 per_interval[t][0] += 1
                 per_interval[t][1] += delta
                 if t not in local_hour:
-                    local_hour[t] = instant(t).astimezone(VIENNA).hour
+                    local_hour[t] = t.astimezone(VIENNA).hour
                 if 0 <= local_hour[t] < 6 and occupancy(room, t) == "vacant" and occupancy(room, old_t) == "vacant" and delta >= 3:
                     water["vacant_night_flow_intervals_ge_3l"] += 1
                     water["vacant_night_flow_liters_ge_3l"] += delta
@@ -140,12 +147,13 @@ def analyze_dataset(data_dir: str | Path) -> dict:
             water["missing_or_invalid_main_samples"] += 1
             prev = None
             continue
+        t = instant(t)
         if prev:
             old_t, old = prev
             delta = value-old
             if delta < 0:
                 water["main_negative_deltas"] += 1
-            elif 0 <= delta <= 50000 and (instant(t)-instant(old_t)).total_seconds() == 900:
+            elif 0 <= delta <= 50000 and (t-old_t).total_seconds() == 900:
                 water["valid_main_intervals"] += 1
                 water["valid_main_interval_liters"] += delta
                 if per_interval[t][0] == len(rooms):
@@ -154,7 +162,7 @@ def analyze_dataset(data_dir: str | Path) -> dict:
     water["complete_main_room_intervals"] = len(residuals)
     water["complete_interval_residual_liters"] = sum(residuals)
     water["median_complete_interval_residual_liters"] = median(residuals) if residuals else None
-    tariffs = {r["timestamp_utc"]: number(r.get("price_eur_kwh")) for r in rows(root, "tariff.csv")}
+    tariffs = {instant(r["timestamp_utc"]): number(r.get("price_eur_kwh")) for r in rows(root, "tariff.csv")}
     energy = Counter()
     for row in rows(root, "energy.csv"):
         energy["samples"] += 1
@@ -172,7 +180,8 @@ def analyze_dataset(data_dir: str | Path) -> dict:
         energy["battery_discharge_kwh"] += max(0, values["battery_discharge_kw_signed"])*0.25
         balance = values["grid_import_kw"]+values["pv_kw"]+values["battery_discharge_kw_signed"]-values["building_load_kw"]-values["grid_export_kw"]
         energy["balance_deviation_samples"] += abs(balance) > max(1, values["building_load_kw"]*0.05)
-        price = tariffs.get(row["timestamp_utc"][:13]+":00:00Z")
+        hour = instant(row["timestamp_utc"]).replace(minute=0, second=0, microsecond=0)
+        price = tariffs.get(hour)
         if price is not None:
             energy["grid_import_cost_eur_observed"] += values["grid_import_kw"]*0.25*price
             energy["cost_covered_samples"] += 1
