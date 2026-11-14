@@ -53,9 +53,10 @@ class _Issues:
             self.examples.append({"code": code, **({"decision_id": decision_id} if decision_id else {}), **details})
 
 
-def _jsonl(path, issues, label):
+def _jsonl(path, issues, label, *, allow_bom=False):
     result = []
-    with path.open(encoding="utf-8") as stream:
+    # Dataset inputs allow a file-leading BOM; generated artifacts stay strict.
+    with path.open(encoding="utf-8-sig" if allow_bom else "utf-8") as stream:
         for line_number, line in enumerate(stream, 1):
             if not line.strip():
                 issues.add(label+"_blank_line", line=line_number)
@@ -73,7 +74,7 @@ def _jsonl(path, issues, label):
 def _csv(path):
     if not path.is_file():
         return []
-    with path.open(encoding="utf-8", newline="") as stream:
+    with path.open(encoding="utf-8-sig", newline="") as stream:
         return list(csv.DictReader(stream))
 
 
@@ -262,8 +263,8 @@ def _notification_scope(record, decisions, requests, events_by_id, bookings, lif
 def validate_outputs(data_dir: str | Path, decisions_path: str | Path, audit_path: str | Path) -> dict:
     root, decisions_path, audit_path = Path(data_dir), Path(decisions_path), Path(audit_path)
     issues = _Issues()
-    building = json.loads((root/"building.json").read_text(encoding="utf-8"))
-    manifest = json.loads((root/"manifest.json").read_text(encoding="utf-8")) if (root/"manifest.json").is_file() else {}
+    building = json.loads((root/"building.json").read_text(encoding="utf-8-sig"))
+    manifest = json.loads((root/"manifest.json").read_text(encoding="utf-8-sig")) if (root/"manifest.json").is_file() else {}
     rooms = {r["id"] for r in building["building"].get("rooms", [])}
     roles = {r["resource_id"]: r["role"] for r in building.get("staff", {}).get("resources", [])}
     asset_ids = {"BUILDING", "MAIN_ENTRANCE", *rooms, *roles}
@@ -271,7 +272,7 @@ def validate_outputs(data_dir: str | Path, decisions_path: str | Path, audit_pat
         asset_ids.update(r["id"] for r in building["building"].get(section, []))
     raw_decisions = _jsonl(decisions_path, issues, "decision")
     raw_audits = _jsonl(audit_path, issues, "audit")
-    raw_events = _jsonl(root/"events.jsonl", issues, "source_event")
+    raw_events = _jsonl(root/"events.jsonl", issues, "source_event", allow_bom=True)
     checked_events = []
     for index, event in enumerate(raw_events, 1):
         invalid = [key for key in ("event_id", "type", "timestamp_utc") if not isinstance(event.get(key), str)]
