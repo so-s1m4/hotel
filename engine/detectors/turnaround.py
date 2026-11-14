@@ -7,8 +7,9 @@ from engine.resources import ResourceCalendar, oncall_slot, scheduled
 
 
 class TurnaroundDetector:
-    def __init__(self, config: EngineConfig):
+    def __init__(self, config: EngineConfig, *, allow_model_intents: bool = False):
         self.config = config
+        self.allow_model_intents = allow_model_intents
         self.pending: dict[str, object] = {}
         self.scheduled_jobs: dict[str, dict] = {}
         self.revisions: dict[str, int] = {}
@@ -24,6 +25,10 @@ class TurnaroundDetector:
             # guest extraction envelopes and need not have iterable intents.
             source_type = event.payload.get("request_type")
             wanted = isinstance(source_type, str) and source_type in {"early_checkin", "waiting_for_room"}
+            if self.allow_model_intents and source_type is None:
+                from engine.detectors.guest_services import verified_guest_intents
+                wanted = any(item["intent"] in {"early_checkin", "waiting_for_room"}
+                             for item in verified_guest_intents(event))
             if wanted:
                 self.pending.setdefault(event.event_id, event)
         if raw_type == "arrival_waiting_room":
@@ -133,6 +138,10 @@ class TurnaroundDetector:
             waiting = observed_waiting or (request.event_type == "guest_request"
                 and request.payload.get("request_type") == "waiting_for_room"
                 and (verified_extraction or offline_label))
+            if self.allow_model_intents and request.payload.get("request_type") is None:
+                from engine.detectors.guest_services import verified_guest_intents
+                model_intents = verified_guest_intents(request)
+                waiting = waiting or any(item["intent"] == "waiting_for_room" for item in model_intents)
             desired = None
             intents = request.payload.get("intents")
             text = request.payload.get("original_text")

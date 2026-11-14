@@ -35,8 +35,8 @@ from ingestion.request_polarity import declined_intents
 __all__ = ["parse_request", "parse_request_full", "parse_requests_batch"]
 
 LOGGER = logging.getLogger(__name__)
-PARSER_VERSION = "1.2.7"  # source clock grammar and declined-service review guards
-PROMPT_VERSION = "guest-semantics-v2"
+PARSER_VERSION = "1.3.0"  # explicit semantic boundaries for the existing intent taxonomy
+PROMPT_VERSION = "guest-semantics-v3"
 MAX_RESPONSE_BYTES = 2_000_000
 MAX_INTENTS = 32
 _LANGUAGES = {"de", "en", "it", "fr", "es", "nl"}
@@ -74,6 +74,58 @@ interpretation keep your evidenced interpretation; the caller retains the
 source label separately and marks the disagreement for review.
 """
 
+TAXONOMY_PROMPT = """\nIntent meanings and boundaries (apply in every supported language):
+- early_checkin: A request for check-in or room access before the planned or
+  normal check-in time. A future early arrival with a request for readiness fits
+  here; it does not establish that the guest is already present or waiting.
+- waiting_for_room: The guest says they have already arrived and are waiting
+  for access to a room that is not ready. A question about future readiness alone
+  is not evidence that the guest is currently waiting.
+- arrival_delay: A delayed, postponed or explicitly late arrival relative to the
+  known plan. This concerns arrival, not departure. Do not call every arrival
+  time early check-in; use the stated delay and available booking context.
+- late_checkout: A request to leave or retain access after the planned checkout
+  time. Distinguish this from a guest arriving late.
+- temperature_hot: A complaint that the room or its air feels too warm, or a
+  request to reduce room heat. Hot tap water is a water issue instead.
+- temperature_cold: A complaint that the room or its air feels too cold, or a
+  request for room heating. Missing hot tap water is a water issue instead.
+- water_issue: A water or plumbing problem, including leaks, dripping taps,
+  running toilets, blocked drains, poor water pressure, or missing hot/cold
+  water supply. Prefer this specific category over generic maintenance for the
+  same plumbing problem, even when the guest asks for a repair or a technician.
+- air_quality: A complaint about stale air, ventilation, airflow, air quality
+  or unpleasant airborne odors. Internet reception and TV signals are unrelated.
+- cleaning_request: A request to clean the room or a surface, remove dirt,
+  empty rubbish, or perform housekeeping. A towel delivery alone is extra_towels.
+- maintenance_issue: A fault or repair request for equipment or fixtures, such
+  as electrical devices, televisions or furniture, when no more specific
+  water, access, Wi-Fi, air-quality or room-temperature category describes it.
+- access_issue: Difficulty entering or opening the room, including a failed
+  key, keycard or lock, or a request for access assistance. Do not infer identity
+  verification, permission, or that a door has been unlocked.
+- noise_complaint: Disturbing noise or a request to reduce a disturbance.
+- extra_towels: A request for additional, replacement or fresh towels. Do not
+  add cleaning_request unless room cleaning is independently requested too.
+- wifi_help: Questions or problems about the hotel's Wi-Fi or internet,
+  including connection, speed, interruptions or obtaining login information.
+  Classify the request only; never supply a password or other guest-facing answer.
+- luggage_storage: A request to store or hold luggage, including before
+  check-in or after checkout. This alone is not an early/late room-access request.
+- parking: A request or problem about vehicle parking, parking availability,
+  spaces, reservations or parking instructions.
+- invoice: A request or question about an invoice, receipt, billing or charges.
+- unknown: No supported hotel-service intent can be established, the message
+  only contains unrelated instructions/questions, or its meaning is too unclear.
+  Keep needs_review=true and do not invent a supported request.
+
+Choose the most specific supported category for one underlying request; do not
+duplicate it as both a specific issue and generic maintenance. Emit multiple
+intents for genuinely independent requests. These definitions do not authorize
+actions, establish room readiness or remove uncertainty. Never treat a declined
+service as an affirmative request; preserve review for ambiguous interpretations.
+"""
+
 EXTRACTION_ONLY_PROMPT = """\nGeneration profile: extraction only.
 Set requested_time_utc=null and details={} in every generated intent. The caller,
 not the model, computes UTC from grounded date/clock phrases and known context.
@@ -86,7 +138,7 @@ other extraction, evidence, untrusted-text and uncertainty rules still apply.
 
 
 def _system_prompt(profile: str = "contract") -> str:
-    return SYSTEM_PROMPT + (EXTRACTION_ONLY_PROMPT if profile == "extraction" else "")
+    return SYSTEM_PROMPT + TAXONOMY_PROMPT + (EXTRACTION_ONLY_PROMPT if profile == "extraction" else "")
 
 
 def _canonical(value: Any) -> str:
@@ -160,8 +212,15 @@ def _config() -> dict[str, Any]:
     max_tokens = int(raw_cap) if raw_cap else None
     if max_tokens is not None and not 1 <= max_tokens <= 16384:
         raise ValueError("LLM_MAX_TOKENS must be between 1 and 16384")
+    reasoning_effort = os.environ.get("LLM_REASONING_EFFORT", "").strip() or None
+    if reasoning_effort is not None and reasoning_effort not in {"none", "low", "medium", "high", "max"}:
+        raise ValueError("Unsupported LLM_REASONING_EFFORT")
+    if (origin(base) == ("https", "api.cerebras.ai", 443) and model == "gpt-oss-120b"
+            and reasoning_effort not in {None, "low", "medium", "high"}):
+        raise ValueError("Cerebras GPT-OSS requires low, medium or high reasoning effort")
     return {"api_key": key, "base_url": base.rstrip("/"), "model": model,
             "response_format_mode": format_mode, "max_tokens": max_tokens,
+            "reasoning_effort": reasoning_effort,
             "generation_profile": profile,
             "timeout": timeout,
             "offline": os.environ.get("GUEST_PARSER_OFFLINE", "").casefold() in {"1", "true", "yes", "on"}}
@@ -169,11 +228,18 @@ def _config() -> dict[str, Any]:
 
 def _known_context(record: Mapping[str, Any], context: Mapping[str, Any]) -> tuple[dict, set[str]]:
     """Remove future/untimestamped outcomes before context reaches the model."""
+    label_policy = context.get("source_label_policy", "required")
+    if not isinstance(label_policy, str) or label_policy not in {"required", "optional"}:
+        raise ValueError("Unsupported source label policy")
     uncertain: set[str] = set()
     message_time = _utc(record.get("timestamp_utc"))
     as_of = _utc(context.get("as_of_utc"))
     cutoff = min(message_time, as_of) if message_time and as_of else message_time
     safe: dict[str, Any] = {"timezone": "Europe/Vienna", "as_of_utc": _utc_text(cutoff) if cutoff else None}
+    if label_policy == "optional":
+        # Only the trusted caller may admit an unlabeled live message. Include
+        # this policy in safe context so historical and live caches stay apart.
+        safe["source_label_policy"] = "optional"
     if message_time:
         safe["message_local_datetime"] = message_time.astimezone(ZoneInfo("Europe/Vienna")).isoformat()
     else:
@@ -231,16 +297,49 @@ def _fallback(record: Mapping[str, Any], method: str, reason: str,
     )
 
 
+def _provider_response_format(config: Mapping[str, Any]) -> dict:
+    """Adapt a fresh schema copy to the provider's supported JSON Schema subset.
+
+    Cerebras strict mode supports the closed objects, enums and nullable unions
+    used here, but not array length, string pattern/format constraints. String
+    length support is model-dependent, so enforce those limits on the host too.
+    This must not mutate the generation schema, frozen contract or prompt.
+    """
+    result = response_format(config.get("response_format_mode", "json_object"),
+                             config.get("generation_profile", "contract"))
+    if (result["type"] == "json_schema"
+            and origin(config["base_url"]) == ("https", "api.cerebras.ai", 443)):
+        unsupported = {"minItems", "maxItems", "minLength", "maxLength", "pattern", "format"}
+
+        def strip(node):
+            if isinstance(node, dict):
+                return {
+                    key: ({name: strip(schema) for name, schema in value.items()}
+                          if key in {"properties", "$defs"} and isinstance(value, dict) else strip(value))
+                    for key, value in node.items() if key not in unsupported
+                }
+            if isinstance(node, list):
+                return [strip(value) for value in node]
+            return node
+
+        result["json_schema"]["schema"] = strip(result["json_schema"]["schema"])
+    return result
+
+
 def _call_llm(messages: list[dict], config: dict) -> str:
     """Small replaceable transport seam; all errors are handled by the caller."""
     endpoint = config["base_url"]
     if not endpoint.endswith("/chat/completions"):
         endpoint += "/chat/completions"
     payload = {"model": config["model"], "messages": messages, "temperature": 0,
-               "response_format": response_format(config.get("response_format_mode", "json_object"),
-                                                  config.get("generation_profile", "contract"))}
+               "response_format": _provider_response_format(config)}
     if config.get("max_tokens") is not None:
-        payload["max_tokens"] = config["max_tokens"]
+        # Cerebras counts reasoning and final-answer tokens against one cap.
+        cap_field = ("max_completion_tokens" if origin(endpoint) == ("https", "api.cerebras.ai", 443)
+                     else "max_tokens")
+        payload[cap_field] = config["max_tokens"]
+    if config.get("reasoning_effort") is not None:
+        payload["reasoning_effort"] = config["reasoning_effort"]
     req = urllib_request.Request(
         endpoint, data=_canonical(payload).encode("utf-8"), method="POST",
         headers={"Content-Type": "application/json", "Accept": "application/json",
@@ -790,7 +889,8 @@ def _validated(raw: list[dict], record: Mapping[str, Any], safe: Mapping[str, An
         uncertain.update(item_uncertain)
         results.append(item.model_dump(mode="json"))
     label = record.get("request_type")
-    if label not in {item["intent"] for item in results}:
+    unlabeled_live = label is None and safe.get("source_label_policy") == "optional"
+    if not unlabeled_live and label not in {item["intent"] for item in results}:
         uncertain.add("request_type")
         for item in results:
             item["needs_review"] = True
@@ -804,9 +904,9 @@ def _cache_path(record: Mapping[str, Any], safe: Mapping[str, Any], config: Mapp
                 "model": config["model"], "base_url": config["base_url"],
                 "generation_profile": config.get("generation_profile", "contract"),
                 "generation_schema": generation_schema(config.get("generation_profile", "contract")),
-                "response_format": response_format(config.get("response_format_mode", "json_object"),
-                                                   config.get("generation_profile", "contract")),
-                "max_tokens": config.get("max_tokens")}
+                "response_format": _provider_response_format(config),
+                "max_tokens": config.get("max_tokens"),
+                "reasoning_effort": config.get("reasoning_effort")}
     key = hashlib.sha256(_canonical(material).encode("utf-8")).hexdigest()
     return Path(os.environ.get("GUEST_PARSER_CACHE_DIR", ".cache/guest_parser")) / (key + ".json")
 
@@ -857,6 +957,9 @@ def parse_request_full(record: dict, context: dict | None = None) -> tuple[list[
     ``context['booking']`` must be historically known; a supplied creation time
     is additionally checked against the source timestamp and ``as_of_utc``.
     Optional ``room_ids`` validates source references without inventing new IDs.
+    Trusted ``context['source_label_policy'] = 'optional'`` permits an absent or
+    null source label for live intake. Blank, invalid or contradictory labels
+    still require review. All other review and fallback guards remain active.
     ``context['use_llm'] is False`` bypasses both model and cached extraction.
     Model/configuration/cache errors yield a valid source-label fallback. Inputs
     are never mutated. Catching ordinary exceptions is intentional at this

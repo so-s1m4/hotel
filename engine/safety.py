@@ -11,8 +11,17 @@ ACTIONS = {
     "block_room", "release_room", "reassign_room", "request_inspection",
     "dispatch_technician", "order_service", "notify_guest", "flag_anomaly",
     "defer_action", "request_human_approval",
+    "create_service_task",
 }
 HUMAN_ACTIONS = {"dispatch_technician", "order_service", "block_room", "reassign_room", "request_human_approval"}
+
+# Queue-only administrative/handoff tasks: none authorizes physical room entry.
+SERVICE_TASK_TEAMS = {
+    "wifi_help": "Front desk", "extra_towels": "Housekeeping", "access_issue": "Front desk",
+    "invoice": "Front desk", "parking": "Front desk", "luggage_storage": "Front desk",
+    "arrival_delay": "Front desk", "late_checkout": "Front desk", "noise_complaint": "Front desk",
+    "cleaning_request": "Housekeeping",
+}
 
 
 class SafetyViolation(ValueError):
@@ -49,6 +58,19 @@ def _validate_safety(decision: DecisionRecordV2, context: dict) -> None:
     rooms = {r["id"] for r in building["building"]["rooms"]}
     affected_rooms = rooms & set(decision.affected_assets)
     room_action = bool(affected_rooms)
+    if decision.action == "create_service_task":
+        task = context.get("service_task")
+        require(isinstance(task, str) and task in SERVICE_TASK_TEAMS, "Unknown service task")
+        require(context.get("guest_intent") == task and context.get("service_team") == SERVICE_TASK_TEAMS[task],
+                "Service task routing must match its allowed policy")
+        require(len(decision.affected_assets) == 1 and decision.affected_assets[0] in rooms | {"BUILDING"},
+                "Service tasks require a room or building scope")
+        require(decision.resource_id is None and context.get("entry_required") is False,
+                "A queued service task cannot dispatch a resource or authorize entry")
+        require(not any(context.get(key) for key in ("water_shutoff", "safety_critical", "notable_cost")),
+                "A queued service task cannot authorize safety interventions or expense")
+        require(not any(key in context for key in ("setpoint_c", "battery_power_kw", "transfer_liters")),
+                "A queued service task cannot control equipment")
     room_controls = {"release_room", "schedule_cleaning", "adjust_room_setpoint"}
     if decision.action in room_controls:
         require(len(decision.affected_assets) == 1 and len(affected_rooms) == 1,

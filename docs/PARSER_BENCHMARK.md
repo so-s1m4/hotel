@@ -111,11 +111,21 @@ inherited `LLM_MAX_TOKENS`, restoring the caller's environment afterward. The
 report records `max_tokens=null` when no cap was requested. These flags describe
 request settings, not measurements of actual output tokens.
 
+`--reasoning-effort low` explicitly selects a backend reasoning setting. Omit it
+to leave the backend default; the harness clears inherited `LLM_REASONING_EFFORT`
+for that run and restores the original environment afterward. The declared value
+(or null) is part of the manifest and warm-cache identity. Cerebras GPT-OSS accepts
+`low`, `medium` or `high`; its token cap is sent as `max_completion_tokens`, which
+includes reasoning and final output tokens.
+
 The manifest includes the exact `response_format` object plus its canonical
 SHA-256, the full generation-schema SHA-256 and the requested token cap. Even
 JSON-object mode pins the generation schema for identity. These are separate
-from the normalized public `GuestIntentV1` schema hash. Changing either mode,
-schema, cap or declared runtime settings invalidates a warm run identity. Use a
+from the normalized public `GuestIntentV1` schema hash. Cerebras's wire schema
+omits unsupported constraints while the unchanged full schema still guides the
+prompt and host checks; the manifest hashes the adapted wire object separately.
+Changing either mode, schema, cap, reasoning effort or declared runtime settings
+invalidates a warm run identity. Use a
 new run ID for an intentional comparison; never relabel one mode's cached output
 as a result from another mode.
 

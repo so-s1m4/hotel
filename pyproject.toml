@@ -14,7 +14,7 @@ license = "MIT"
 dev = ["pytest>=8,<10"]
 
 [tool.setuptools.packages.find]
-include = ["common*", "ingestion*", "engine*"]
+include = ["common*", "ingestion*", "engine*", "hotel_bot*"]
 exclude = ["common.tests*"]
 
 [tool.pytest.ini_options]

@@ -419,8 +419,9 @@ def test_unusable_or_input_alias_output_is_rejected_before_calls(benchmark, pars
 @pytest.mark.parametrize('changed', [
     {'response_format_mode': 'json_schema'},
     {'max_tokens': 256},
+    {'reasoning_effort': 'low'},
     {'runtime_metadata': {'served_model_digest': 'sha256:' + 'b' * 64, 'num_parallel': 2}},
-], ids=['response-mode', 'output-token-cap', 'declared-runtime'])
+], ids=['response-mode', 'output-token-cap', 'reasoning-effort', 'declared-runtime'])
 def test_generation_settings_cannot_reuse_a_warm_run_identity(benchmark, parser, cases, tmp_path, monkeypatch, changed):
     path = write_cases(tmp_path/'cases.jsonl', cases[:1])
     transport = Mock(side_effect=lambda messages, settings: reply(guest_record(messages)))
@@ -476,6 +477,7 @@ def test_default_generation_mode_clears_inherited_cap_without_claiming_server_me
     path = write_cases(tmp_path/'cases.jsonl', cases[:1])
     monkeypatch.setenv('LLM_MAX_TOKENS', '2048')
     monkeypatch.setenv('LLM_RESPONSE_FORMAT', 'json_schema')
+    monkeypatch.setenv('LLM_REASONING_EFFORT', 'high')
     settings_seen = []
 
     def transport(messages, settings):
@@ -486,14 +488,64 @@ def test_default_generation_mode_clears_inherited_cap_without_claiming_server_me
     report = benchmark.run_benchmark(config_for(benchmark, tmp_path, path, limit=1, execute=True), parser_module=parser)
     assert settings_seen[0]['response_format_mode'] == 'json_object'
     assert settings_seen[0]['max_tokens'] is None
+    assert settings_seen[0]['reasoning_effort'] is None
     assert report['manifest']['max_tokens'] is None
+    assert report['manifest']['reasoning_effort'] is None
     assert report['manifest']['runtime_metadata'] == {'provenance': 'operator_supplied_not_measured', 'values': {}}
     assert os.environ['LLM_MAX_TOKENS'] == '2048'
+    assert os.environ['LLM_REASONING_EFFORT'] == 'high'
+
+
+@pytest.mark.parametrize('profile', ['contract', 'extraction'])
+def test_cerebras_manifest_pins_actual_wire_schema_and_reasoning(benchmark, parser, cases, tmp_path, monkeypatch, profile):
+    from ingestion.guest_generation import response_format
+    path = write_cases(tmp_path/'cases.jsonl', cases[:1])
+    monkeypatch.setenv('LLM_REASONING_EFFORT', 'high')
+    previous_environment = dict(os.environ)
+    wire = []
+
+    class Response:
+        def __init__(self, content):
+            self.body = json.dumps({'choices': [{'finish_reason': 'stop', 'message': {'content': content}}]}).encode()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self, size):
+            return self.body[:size]
+
+    def transport(request, timeout):
+        payload = json.loads(request.data)
+        wire.append(payload)
+        return Response(reply(guest_record(payload['messages'])))
+
+    monkeypatch.setattr(parser, '_open_llm', transport)
+    config = config_for(benchmark, tmp_path, path, limit=1, execute=True,
+                        base_url='https://api.cerebras.ai/v1', model='gpt-oss-120b',
+                        response_format_mode='json_schema', generation_profile=profile,
+                        reasoning_effort='low', max_tokens=4096)
+    report = benchmark.run_benchmark(config, parser_module=parser)
+    manifest = report['manifest']
+    assert report['summary']['live_llm'] == 1 and len(wire) == 1
+    assert manifest['response_format'] == wire[0]['response_format']
+    assert manifest['response_format_sha256'] == hashlib.sha256(
+        benchmark._canonical(wire[0]['response_format']).encode()).hexdigest()
+    assert manifest['response_format'] != response_format('json_schema', profile)
+    assert wire[0]['reasoning_effort'] == manifest['reasoning_effort'] == 'low'
+    assert wire[0]['max_completion_tokens'] == manifest['max_tokens'] == 4096
+    assert 'max_tokens' not in wire[0]
+    assert dict(os.environ) == previous_environment
 
 
 @pytest.mark.parametrize('changes', [
     {'timeout_seconds': True}, {'timeout_seconds': '15'},
     {'response_format_mode': 'text'}, {'max_tokens': True}, {'max_tokens': 0}, {'max_tokens': 16385},
+    {'reasoning_effort': ''}, {'reasoning_effort': 'automatic'},
+    {'reasoning_effort': True}, {'reasoning_effort': []},
+    {'base_url': 'https://api.cerebras.ai/v1', 'model': 'gpt-oss-120b', 'reasoning_effort': 'none'},
     {'runtime_metadata': {'served_model_digest': 'latest'}},
     {'runtime_metadata': {'api_key': 'never-record-credentials'}},
     {'runtime_metadata': {'num_parallel': True}},
@@ -520,10 +572,12 @@ def test_cli_reads_operator_metadata_and_generation_options_without_calls(benchm
         '--revision', REVISION, '--run-id', 'plan', '--base-url', 'http://127.0.0.1:11434/v1',
         '--model', 'synthetic-model', '--cache-root', str(tmp_path/'cache'), '--out', str(report),
         '--workers', '1', '--response-format-mode', 'json_schema', '--max-tokens', '384',
+        '--reasoning-effort', 'low',
         '--runtime-metadata', str(runtime)]) == 0
     manifest = json.loads(report.read_text())['manifest']
     assert manifest['response_format_mode'] == 'json_schema'
     assert manifest['max_tokens'] == 384
+    assert manifest['reasoning_effort'] == 'low'
     assert manifest['runtime_metadata']['values']['served_model_digest'] == 'd' * 64
     assert not (tmp_path/'cache').exists()
 

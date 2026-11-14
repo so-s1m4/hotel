@@ -16,6 +16,7 @@ from engine.detectors.maintenance import MaintenanceDetector
 from engine.detectors.surge import SurgeDetector
 from engine.detectors.logistics import LogisticsDetector
 from engine.detectors.optimization import OptimizationDetector
+from engine.detectors.guest_services import GuestServicesDetector
 from engine.executor import MockExecutor
 from engine.resources import ResourceCalendar
 from engine.notifications import NotificationLedger
@@ -199,7 +200,10 @@ class _EventTransaction:
 
 
 class DecisionEngine:
-    def __init__(self, repo: ReplayDataGateway, building: dict, config: EngineConfig | None = None):
+    def __init__(self, repo: ReplayDataGateway, building: dict, config: EngineConfig | None = None,
+                 *, enable_guest_services: bool = False):
+        if type(enable_guest_services) is not bool:
+            raise ValueError("enable_guest_services must be a boolean")
         self.repo = repo
         self.building = deepcopy(building)
         self.config = config or EngineConfig()
@@ -219,7 +223,8 @@ class DecisionEngine:
         self._event_fingerprints = {}
         self.episodes = EpisodeTracker()
         self.executor = MockExecutor()
-        self.turnaround = TurnaroundDetector(self.config)
+        self.turnaround = TurnaroundDetector(self.config, allow_model_intents=enable_guest_services)
+        self.guest_services = GuestServicesDetector(self.config) if enable_guest_services else None
         self.water = WaterDetector(self.config)
         self.energy = EnergyDetector(self.config)
         self.maintenance = MaintenanceDetector(self.config)
@@ -305,11 +310,15 @@ class DecisionEngine:
                      lambda: self.surge.detect(event, self.repo, self.building, self.calendar),
                      lambda: self.logistics.detect(event, self.repo, self.building, self.calendar),
                      lambda: self.optimization.detect(event, self.repo, self.building)]
+        detector_objects = [self.turnaround, self.water, self.energy, self.maintenance,
+                            self.surge, self.logistics, self.optimization]
+        if self.guest_services is not None:
+            detectors.append(lambda: self.guest_services.detect(event, self.repo, self.building))
+            detector_objects.append(self.guest_services)
         records = self._drain_cancellations(event)
         accepted_actions = {}
         for index, detect in enumerate(detectors):
-            detector = (self.turnaround, self.water, self.energy, self.maintenance,
-                        self.surge, self.logistics, self.optimization)[index]
+            detector = detector_objects[index]
             if detector is not self.turnaround and not (
                 detector in (self.water, self.energy, self.optimization)
                 and event.event_type != "clock_tick"

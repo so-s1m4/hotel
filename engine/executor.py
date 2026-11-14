@@ -22,6 +22,7 @@ class MockExecutor:
             "duration_minutes", "expected_soc_kwh", "transfer_liters", "service",
             "lead_hours", "weak_water_metrics", "container_max_fill_pct", "water_shutoff", "safety_critical", "cancelled_decision_id",
             "notable_cost", "common_area_route", "oncall", "waiting_guest",
+            "guest_intent", "service_team", "service_task", "clarification_required",
         ) if k in context}
         parameters["room_id"] = context.get("room", {}).get("room_id")
         rooms = {r["id"] for r in context.get("building", {}).get("building", {}).get("rooms", [])}
@@ -147,6 +148,8 @@ class MockExecutor:
                     room=parameters["room_id"] if parameters["entry_required"] else None,
                 )
                 phase = "scheduled" if instant(context["start_utc"]) > instant(decision.timestamp_utc) else "task_proposed"
+            elif decision.action == "create_service_task":
+                phase = "task_queued"
             elif decision.action in {"request_inspection", "order_service", "dispatch_technician"}:
                 phase = "request_queued"
             elif decision.action == "notify_guest":

@@ -64,6 +64,7 @@ class BenchmarkConfig:
     generation_profile: str = "contract"
     max_tokens: int | None = None
     runtime_metadata: dict | None = None
+    reasoning_effort: str | None = None
 
 
 def _canonical(value: Any) -> str:
@@ -165,6 +166,13 @@ def _validate_config(config: BenchmarkConfig) -> None:
         raise ValueError("Generation profile must be contract or extraction")
     if config.max_tokens is not None and (type(config.max_tokens) is not int or not 1 <= config.max_tokens <= 16384):
         raise ValueError("Max tokens must be an integer between 1 and 16384 or null")
+    if config.reasoning_effort is not None and (not isinstance(config.reasoning_effort, str)
+            or config.reasoning_effort not in {"none", "low", "medium", "high", "max"}):
+        raise ValueError("Unsupported reasoning effort")
+    from ingestion.llm_transport import origin
+    if (origin(config.base_url) == ("https", "api.cerebras.ai", 443) and config.model == "gpt-oss-120b"
+            and config.reasoning_effort not in {None, "low", "medium", "high"}):
+        raise ValueError("Cerebras GPT-OSS requires low, medium or high reasoning effort")
     _runtime_metadata(config.runtime_metadata)
 
 
@@ -488,8 +496,12 @@ def run_benchmark(config: BenchmarkConfig, *, parser_module: Any = None) -> dict
     if out.resolve().is_relative_to(cache_dir):
         raise ValueError("Report must be outside the managed cache directory")
     secrets = _secrets(config.base_url)
-    from ingestion.guest_generation import response_format, generation_schema_sha256, response_format_sha256
-    generation_format = response_format(config.response_format_mode, config.generation_profile)
+    from ingestion.guest_generation import generation_schema_sha256
+    generation_format = parser._provider_response_format({
+        "base_url": config.base_url,
+        "response_format_mode": config.response_format_mode,
+        "generation_profile": config.generation_profile,
+    })
     declared_runtime = _runtime_metadata(config.runtime_metadata)
     profile_prompt = parser._system_prompt(config.generation_profile) if hasattr(parser, "_system_prompt") else parser.SYSTEM_PROMPT
     identity = {
@@ -503,9 +515,10 @@ def run_benchmark(config: BenchmarkConfig, *, parser_module: Any = None) -> dict
         "response_format_mode": config.response_format_mode,
         "generation_profile": config.generation_profile,
         "generation_schema_sha256": generation_schema_sha256(config.generation_profile),
-        "response_format_sha256": response_format_sha256(config.response_format_mode, config.generation_profile),
+        "response_format_sha256": _digest(_canonical(generation_format)),
         "response_format": generation_format,
         "max_tokens": config.max_tokens,
+        "reasoning_effort": config.reasoning_effort,
         "runtime_metadata_sha256": _digest(_canonical(declared_runtime)),
     }
     marker = cache_dir / _MARKER
@@ -558,7 +571,8 @@ def run_benchmark(config: BenchmarkConfig, *, parser_module: Any = None) -> dict
                                "GUEST_PARSER_CACHE_DIR": str(cache_dir),
                                "LLM_RESPONSE_FORMAT": config.response_format_mode,
                                "LLM_GENERATION_PROFILE": config.generation_profile,
-                               "LLM_MAX_TOKENS": "" if config.max_tokens is None else str(config.max_tokens)}
+                               "LLM_MAX_TOKENS": "" if config.max_tokens is None else str(config.max_tokens),
+                               "LLM_REASONING_EFFORT": config.reasoning_effort or ""}
                 started = time.perf_counter()
                 with patch.dict(os.environ, environment):
                     report["results"] = _run_cases(config, selected, parser)
@@ -631,6 +645,8 @@ def main(argv: list[str] | None = None) -> int:
     cli.add_argument("--response-format-mode", choices=("json_object", "json_schema"), default="json_object")
     cli.add_argument("--generation-profile", choices=("contract", "extraction"), default="contract")
     cli.add_argument("--max-tokens", type=int, help="explicit output cap (1..16384); absent means no requested cap")
+    cli.add_argument("--reasoning-effort", choices=("none", "low", "medium", "high", "max"),
+                     help="explicit backend reasoning setting; absent leaves backend default, ignoring inherited environment")
     cli.add_argument("--runtime-metadata", type=Path, help="JSON file of operator-declared runtime settings, not measurements")
     cli.add_argument("--execute", action="store_true", help="permit configured parser transport calls")
     cli.add_argument("--warm", action="store_true", help="require matching cache metadata from a prior execution")
