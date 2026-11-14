@@ -116,6 +116,14 @@ def score_normalized(items: list[dict], meta: dict | None, case: dict) -> dict:
         schema_valid = bool(items)
     except (ValueError, TypeError):
         schema_valid = False
+    uncertain_fields = meta.get('uncertain_fields') if isinstance(meta, dict) else None
+    uncertainty_valid = isinstance(uncertain_fields, list) and all(isinstance(field, str) for field in uncertain_fields)
+    # Check actual normalized flags independently of the expected review value.
+    # Missing or malformed metadata must not acquire coherence through coercion.
+    review_coherent = (isinstance(meta, dict) and type(meta.get('needs_review')) is bool
+        and bool(items) and all(item['explicit_review'] for item in per_item)
+        and uncertainty_valid
+        and meta['needs_review'] is (any(item['needs_review'] for item in items) or bool(uncertain_fields)))
     flags = {
         'schema_valid': schema_valid,
         'intent_multiset_match': _counts(items, ('intent',)) == _counts(expected, ('intent',)),
@@ -126,7 +134,8 @@ def score_normalized(items: list[dict], meta: dict | None, case: dict) -> dict:
         'details_grounded': bool(items) and all(x['details_grounded'] for x in per_item),
         'forbidden_intents_absent': not any(item.get('intent') in case.get('forbidden_affirmative_intents', []) for item in items),
         'extraction_review_match': isinstance(meta, dict) and meta.get('needs_review') is case['extraction_needs_review'],
-        'required_uncertainty_present': isinstance(meta, dict) and set(case.get('required_uncertain_fields', [])) <= set(meta.get('uncertain_fields', [])),
+        'extraction_review_coherent': review_coherent,
+        'required_uncertainty_present': uncertainty_valid and set(case.get('required_uncertain_fields', [])) <= set(uncertain_fields),
     }
     return {**flags, 'passed': all(flags.values()), 'per_intent': per_item}
 

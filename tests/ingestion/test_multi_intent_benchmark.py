@@ -110,6 +110,36 @@ def test_missing_extra_duplicate_and_wrong_review_fail_independently(parser, tmp
         assert not checks['intent_multiset_match']
 
 
+@pytest.mark.parametrize('cause', ['uncertainty', 'item', 'no_reason'])
+def test_extraction_review_must_match_actual_item_flags_or_uncertainty(cause):
+    case, items = example(), good()
+    meta = {'needs_review': False, 'uncertain_fields': []}
+    assert multi.score_normalized(items, meta, case)['passed']
+    if cause == 'uncertainty':
+        meta['uncertain_fields'] = ['requested_time_utc']
+    elif cause == 'item':
+        items[0]['needs_review'] = True
+        next(item for item in case['expected_intents'] if item['intent'] == items[0]['intent'])['needs_review'] = True
+    else:
+        meta['needs_review'] = case['extraction_needs_review'] = True
+    checks = multi.score_normalized(items, meta, case)
+    assert all(value for name, value in checks.items()
+               if name not in {'extraction_review_coherent', 'passed', 'per_intent'})
+    assert checks['extraction_review_coherent'] is False and checks['passed'] is False
+    meta['needs_review'] = case['extraction_needs_review'] = cause != 'no_reason'
+    assert multi.score_normalized(items, meta, case)['passed']
+
+
+@pytest.mark.parametrize('meta', [
+    {'needs_review': 0, 'uncertain_fields': []},
+    {'needs_review': False, 'uncertain_fields': 'requested_time_utc'},
+    {'needs_review': False, 'uncertain_fields': [{}]},
+])
+def test_review_coherence_rejects_malformed_flags_and_uncertainty_without_coercion(meta):
+    checks = multi.score_normalized(good(), meta, example())
+    assert checks['extraction_review_coherent'] is False and checks['passed'] is False
+
+
 def test_same_intent_different_dates_cannot_swap_review_or_hide_duplicate():
     case = example()
     case['record']['text'] = 'today 11:20; tomorrow 12:30'
